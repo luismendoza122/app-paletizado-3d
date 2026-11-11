@@ -121,7 +121,7 @@ export async function grabarVideo(estiba, palet, colores, { titulo = '', alAvanz
   const camara = new THREE.PerspectiveCamera(40, W / HV, 0.01, 50);
   const alturaM = Math.max(0.8, (palet.altoBase + (estiba.alturaTotal || 1200)) / 1000);
   centro.y = alturaM / 2;
-  const radio = 2.4 + alturaM * 0.6;
+  const radio = 1.9 + alturaM * 0.45;
   piezas.forEach((p) => { p.malla.visible = false; p.borde.visible = false; });
 
   const lienzo = document.createElement('canvas');
@@ -176,7 +176,7 @@ export async function grabarVideo(estiba, palet, colores, { titulo = '', alAvanz
         p.malla.position.y = y; p.borde.position.y = y;
       }
       const ang = 0.6 + (t / total) * Math.PI * 1.2;
-      camara.position.set(centro.x + Math.cos(ang) * radio, centro.y + alturaM * 0.9 + 0.6, centro.z + Math.sin(ang) * radio);
+      camara.position.set(centro.x + Math.cos(ang) * radio, centro.y + alturaM * 0.55 + 0.35, centro.z + Math.sin(ang) * radio);
       camara.lookAt(centro);
       renderer.render(escena, camara);
       g.drawImage(renderer.domElement, 0, 0, W, HV);
