@@ -39,6 +39,17 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Firma fija (para que el celular acepte las actualizaciones)
+        env:
+          FIRMA_APK_B64: ${{ secrets.FIRMA_APK_B64 }}
+        run: |
+          if [ -z "$FIRMA_APK_B64" ]; then
+            echo "::warning::Sin el secreto FIRMA_APK_B64 esta APK queda con una firma distinta cada vez. Instala desde la Central (Mis APK)."
+          else
+            echo "$FIRMA_APK_B64" | base64 -d > "$RUNNER_TEMP/paletizado.keystore"
+            FIRMA_ARCHIVO="$RUNNER_TEMP/paletizado.keystore" FIRMA_CLAVE=paletizado3d node scripts/firmar-android.js
+          fi
+
       - name: Compilar APK
         working-directory: android
         run: |
