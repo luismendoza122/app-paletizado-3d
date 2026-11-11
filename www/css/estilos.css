@@ -77,3 +77,13 @@ details { margin: 8px 0; } summary { min-height: 40px; font-weight: 600; color: 
 .msg p { margin: 4px 0; font-size: 15px; }
 .msg.yo { align-self: flex-end; background: var(--azul2); color: #fff; }
 .msg.agente { align-self: flex-start; background: var(--fondo); border: 1px solid var(--borde); }
+.aviso.tarea { background: #e8f0fd; border-color: #9dbbf0; }
+.pos.pend { box-shadow: inset 0 0 0 2px var(--azul2); }
+.conflicto { border: 1px solid #f1a7a7; background: #fdecec; border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 14px; }
+.grupo-pas { margin: 6px 0; } .grupo-pas small { display: block; color: var(--gris); }
+label.chk { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; min-width: 0; flex: 0 0 auto; margin: 4px 10px 4px 0; font-size: 16px; color: var(--texto); min-height: 40px; }
+label.chk input { min-height: 0; width: 22px; height: 22px; }
+.aprendizaje { background: var(--fondo); border-radius: 10px; padding: 6px 10px; margin: 6px 0; }
+.aprendizaje p { font-size: 14px; }
+.toast.error { background: var(--rojo); }
+.toast.ok { background: var(--azul); border: 0; }

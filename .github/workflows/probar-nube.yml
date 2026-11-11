@@ -1,0 +1,30 @@
+# Prueba manual de la función "paletizado" en Supabase (abrir y enviar una tarea de prueba).
+name: Probar la nube
+
+on:
+  workflow_dispatch:
+    inputs:
+      token:
+        description: Token de una tarea de prueba
+        required: true
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar la función
+        env:
+          T: ${{ inputs.token }}
+        run: |
+          F=https://nfrqrboqxcpgsagnmwqq.supabase.co/functions/v1/paletizado
+          K=sb_publishable_73XleY68KOLPlGw_DrlQsA__IQzwPB8
+          c(){ echo "== $1"; curl -sS -m 30 -X POST "$F" -H "apikey: $K" -H "Content-Type: application/json" --data "$2" -w ' [%{http_code}]' | cut -c1-400; echo; }
+          c registrar '{"accion":"registrar","id":"prueba-github-0001","plataforma":"web","version":"prueba"}'
+          c conocimiento '{"accion":"conocimiento","limite":2}'
+          c abrir '{"accion":"tarea_abrir","token":"'"$T"'","dispositivo":"cel-A-prueba"}'
+          c otro-celular '{"accion":"tarea_abrir","token":"'"$T"'","dispositivo":"cel-B-prueba"}'
+          c enviar '{"accion":"tarea_enviar","token":"'"$T"'","dispositivo":"cel-A-prueba","cambios":[{"codigo":"12-001x1","version_base":0,"datos":{"ARTICULO":"Prueba","CODIGO_ARTICULO":"1"}},{"codigo":"05-001x1","version_base":0,"datos":{"ARTICULO":"fuera de la tarea"}}]}'
+          c conflicto '{"accion":"tarea_enviar","token":"'"$T"'","dispositivo":"cel-A-prueba","cambios":[{"codigo":"12-001x1","version_base":0,"datos":{"ARTICULO":"Otro"}}]}'
+          c cerrar '{"accion":"tarea_enviar","token":"'"$T"'","dispositivo":"cel-A-prueba","cerrar":true,"cambios":[{"codigo":"12-001x1","version_base":1,"datos":{"ARTICULO":"Otro"}}]}'
+          c reabrir '{"accion":"tarea_abrir","token":"'"$T"'","dispositivo":"cel-A-prueba"}'
+          c sin-sesion '{"accion":"usuarios"}'

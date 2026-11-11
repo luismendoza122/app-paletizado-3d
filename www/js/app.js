@@ -10,6 +10,7 @@ import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe } from './visor.js';
 import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, COLUMNAS, ZONAS } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
+import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
 export const REPO = 'luismendoza122/app-paletizado-3d';
 const URL_APK = `https://github.com/${REPO}/releases/latest/download/paletizado-3d.apk`;
@@ -27,6 +28,11 @@ const estado = {
   propuesta: null,     // resultado de proponerReubicacion
   posiciones: [],      // posiciones ocupadas con artículo e índice
   colores: new Map(),
+  tarea: leer('tarea', null),            // tarea abierta por enlace (modo operador)
+  conflictos: leer('conflictos', []),    // posiciones que otro cambió al mismo tiempo
+  conocimiento: leer('conocimiento', []),// aprendizaje diario del agente
+  conSesion: !!leer('sesion', null),     // Luis inició sesión
+  sincronizando: false,
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -68,8 +74,129 @@ function guardarFilas() {
 }
 
 function contexto() {
-  return { filas: estado.filas, posiciones: estado.posiciones, propuesta: estado.propuesta, pedidos: estado.pedidos, palet: estado.palet, paletConfirmado: estado.paletConfirmado };
+  return { filas: estado.filas, posiciones: estado.posiciones, propuesta: estado.propuesta, pedidos: estado.pedidos, palet: estado.palet, paletConfirmado: estado.paletConfirmado, conocimiento: estado.conocimiento };
 }
+
+// ---------- Información compartida (una sola para todos) ----------
+const VERSION_APP = '0.3.0';
+function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
+function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
+function pendientes() { return estado.filas.filter((f) => f._pendiente); }
+
+// Pone en el equipo lo que viene del servidor (sin pisar lo que este celular cambió y no ha enviado).
+function aplicarServidor(lista) {
+  const porCodigo = new Map(estado.filas.map((f) => [f.CODIGO, f]));
+  let nuevas = 0;
+  for (const r of lista || []) {
+    let f = porCodigo.get(r.codigo);
+    if (f && f._pendiente) continue;
+    if (!f) { f = { CODIGO: r.codigo }; estado.filas.push(f); porCodigo.set(r.codigo, f); nuevas++; }
+    for (const k of Object.keys(f)) if (!['CODIGO', 'SECCION', 'PASILLO', 'MODULO', 'POSICION', 'SUBPOSICION', 'SECUENCIA_RUTA'].includes(k) && !k.startsWith('_')) delete f[k];
+    Object.assign(f, r.datos, { _version: r.version, _por: r.actualizado_por, _en: r.actualizado_en });
+    if (!['VACIA', 'DIVIDIDA'].includes(f.ESTADO)) f.ESTADO = estadoDe({ ...f, ESTADO: '' });
+  }
+  if (nuevas) estado.filas = mezclar(estado.filas, []);
+  guardarFilas();
+  recalcular();
+}
+
+let temporizador = null;
+function programarEnvio() {
+  clearTimeout(temporizador);
+  temporizador = setTimeout(() => sincronizar(), 1500);
+}
+
+async function sincronizar({ cerrar = !!estado.tarea?.terminada } = {}) {
+  if (estado.sincronizando || !enLinea()) return;
+  const cambios = pendientes().map((f) => ({ codigo: f.CODIGO, version_base: f._version || 0, datos: datosDe(f) }));
+  const t = estado.tarea;
+  if (!t && !estado.conSesion) return;
+  if (t?.cerrada) return;
+  if (!cambios.length && !cerrar) return;
+  estado.sincronizando = true;
+  try {
+    let r;
+    if (t) r = await llamar('tarea_enviar', { token: t.token, cambios, cerrar });
+    else r = await llamar('guardar', { cambios, por: 'Luis' }, await sesionVigente());
+    const porCodigo = new Map(estado.filas.map((f) => [f.CODIGO, f]));
+    for (const g of r.guardadas || []) {
+      const f = porCodigo.get(g.codigo);
+      if (f) { f._version = g.version; f._pendiente = false; f._por = miNombre(); f._en = new Date().toISOString(); }
+    }
+    estado.conflictos = (r.conflictos || []).map((c) => ({ ...c, mio: datosDe(porCodigo.get(c.codigo) || {}) }));
+    guardar('conflictos', estado.conflictos);
+    if (r.posiciones) aplicarServidor(r.posiciones); else guardarFilas();
+    if (r.cerrada && t) { t.cerrada = true; guardar('tarea', t); notificar('Tarea enviada. El enlace quedó inhabilitado.'); }
+    else if ((r.guardadas || []).length) notificar(`Enviadas ${(r.guardadas || []).length} posiciones`);
+    if (estado.conflictos.length) notificar(`${estado.conflictos.length} posiciones las cambió otra persona: revisa en "Tomar datos"`, 'error');
+  } catch (e) {
+    if (e.codigo === 410 || e.codigo === 409) { if (t) { t.error = e.message; guardar('tarea', t); } }
+    notificar(`No se pudo enviar: ${e.message}`, 'error');
+  } finally {
+    estado.sincronizando = false;
+    if (['tomar', 'inicio', 'tareas'].includes(pestanaActual)) mostrar(pestanaActual);
+  }
+}
+
+async function abrirTareaDeEnlace(token) {
+  if (estado.tarea?.token === token) return; // ya está en este celular (sirve sin internet)
+  if (estado.tarea && !estado.tarea.cerrada && pendientes().length) {
+    notificar('Termina y envía la tarea actual antes de abrir otra', 'error');
+    return;
+  }
+  if (!enLinea()) { notificar('Para abrir la tarea la primera vez se necesita internet', 'error'); return; }
+  try {
+    const r = await llamar('tarea_abrir', { token });
+    estado.tarea = { ...r.tarea, token, cerrada: false, terminada: false };
+    guardar('tarea', estado.tarea);
+    aplicarServidor(r.posiciones);
+    const z = ZONAS.find((x) => x.pasillos.includes(r.tarea.pasillos[0]));
+    estado.tomaZona = z?.zona; estado.tomaPasillo = r.tarea.pasillos[0];
+    notificar(`Tarea abierta: ${r.tarea.titulo}`);
+    mostrar('tomar');
+  } catch (e) {
+    estado.errorEnlace = e.message;
+    mostrar('inicio');
+  }
+}
+
+function bannerTarea() {
+  const t = estado.tarea;
+  if (!t) return estado.errorEnlace ? `<div class="aviso error">${esc(estado.errorEnlace)}</div>` : '';
+  const n = pendientes().length;
+  if (t.cerrada) return `<div class="aviso ok"><b>Tarea enviada y cerrada:</b> ${esc(t.titulo)}. El enlace ya no sirve. <button class="boton sec" id="salirTarea">Salir de la tarea</button></div>`;
+  return `<div class="aviso tarea"><b>Tarea:</b> ${esc(t.titulo)} · ${esc(t.asignado_a)} · pasillos ${esc(t.pasillos.join(', '))}<br>
+    ${n ? `${n} posiciones por enviar` : 'Todo enviado'} · ${enLinea() ? 'con internet' : 'sin internet (se envía sola al volver la conexión)'}
+    ${t.terminada ? '<br><b>Marcada como terminada: se enviará y cerrará al tener conexión.</b>' : ''}${t.error ? `<br><b>${esc(t.error)}</b>` : ''}
+    <br><button class="boton" id="terminarTarea">Terminar y enviar</button></div>`;
+}
+
+function conectarBanner() {
+  $('#terminarTarea')?.addEventListener('click', async () => {
+    if (!(await confirmar('¿Terminaste la tarea? Se envía todo y el enlace queda inhabilitado.'))) return;
+    estado.tarea.terminada = true; guardar('tarea', estado.tarea);
+    if (enLinea()) sincronizar({ cerrar: true }); else { notificar('Sin internet: se enviará sola al volver la conexión'); mostrar(pestanaActual); }
+  });
+  $('#salirTarea')?.addEventListener('click', () => { estado.tarea = null; guardar('tarea', null); history.replaceState(null, '', location.pathname); mostrar('inicio'); });
+}
+
+async function alIniciar() {
+  if (enLinea()) {
+    llamar('registrar', { id: idDispositivo(), plataforma: plataforma(), version: VERSION_APP, nombre: miNombre() }).catch(() => {});
+    llamar('conocimiento', { limite: 40 }).then((r) => { estado.conocimiento = r.conocimiento || []; guardar('conocimiento', estado.conocimiento); if (pestanaActual === 'agente') mostrar('agente'); }).catch(() => {});
+    if (estado.tarea && !estado.tarea.cerrada) {
+      if (estado.tarea.terminada) sincronizar({ cerrar: true }); else if (pendientes().length) sincronizar();
+    } else if (estado.conSesion && pendientes().length) sincronizar();
+  }
+  const token = tokenDeLaDireccion();
+  if (token) abrirTareaDeEnlace(token);
+}
+window.addEventListener('online', () => {
+  notificar('Volvió la conexión');
+  if (estado.tarea?.terminada && !estado.tarea.cerrada) sincronizar({ cerrar: true }); else sincronizar();
+});
+window.addEventListener('offline', () => { notificar('Sin conexión: sigue trabajando, se guarda en el celular'); if (pestanaActual === 'tomar') mostrar('tomar'); });
+window.addEventListener('hashchange', () => { const t = tokenDeLaDireccion(); if (t) abrirTareaDeEnlace(t); });
 
 function mapaActual() {
   const m = new Map();
@@ -147,7 +274,7 @@ const pantallas = {
       const pz = estado.posiciones.filter((p) => p.fila.SECCION === z);
       return `<tr><td>${esc(z)}</td><td class="num">${fmt(estado.filas.filter((f) => f.SECCION === z && f.ESTADO !== 'DIVIDIDA').length)}</td><td class="num">${fmt(pz.length)}</td><td class="num">${fmt(pz.filter((p) => !p.faltan.length).length)}</td></tr>`;
     }).join('');
-    return `
+    return `${bannerTarea()}
       ${estado.paletConfirmado ? '' : '<div class="aviso">Las medidas del palet (altura y peso máximos) son <b>de ejemplo</b>. Confírmalas con el CEDI en <b>Ajustes</b>.</div>'}
       <section class="tarjeta">
         <h2>1. Datos</h2>
@@ -174,8 +301,10 @@ const pantallas = {
   },
 
   tomar() {
-    const zona = estado.tomaZona || ZONAS[0].zona;
-    const pasillos = ZONAS.find((z) => z.zona === zona)?.pasillos || [];
+    const permitidos = estado.tarea && !estado.tarea.cerrada ? estado.tarea.pasillos : null;
+    const zonasVisibles = permitidos ? ZONAS.filter((z) => z.pasillos.some((x) => permitidos.includes(x))) : ZONAS;
+    const zona = zonasVisibles.some((z) => z.zona === estado.tomaZona) ? estado.tomaZona : zonasVisibles[0].zona;
+    const pasillos = (ZONAS.find((z) => z.zona === zona)?.pasillos || []).filter((x) => !permitidos || permitidos.includes(x));
     const pas = pasillos.includes(estado.tomaPasillo) ? estado.tomaPasillo : pasillos[0];
     const filtro = estado.tomaFiltro || 'todas';
     const delPasillo = estado.filas.filter((f) => f.PASILLO === pas && f.ESTADO !== 'DIVIDIDA');
@@ -184,13 +313,18 @@ const pantallas = {
     const etiqueta = { 'SIN REVISAR': 'sin', VACIA: 'vac', INCOMPLETA: 'inc', COMPLETA: 'ok' };
     const filas = lista.map((f) => {
       const e = estadoDe(f);
-      return `<button class="pos ${etiqueta[e]}" data-cod="${esc(f.CODIGO)}"><b>${esc(f.CODIGO)}</b><span>${e === 'VACIA' ? 'Vacía' : e === 'SIN REVISAR' ? 'Sin revisar' : esc(f.ARTICULO || f.CODIGO_ARTICULO || '')}${e === 'INCOMPLETA' ? ' · <i>faltan datos</i>' : ''}</span></button>`;
+      return `<button class="pos ${etiqueta[e]}${f._pendiente ? ' pend' : ''}" data-cod="${esc(f.CODIGO)}"><b>${esc(f.CODIGO)}${f._pendiente ? ' ●' : ''}</b><span>${e === 'VACIA' ? 'Vacía' : e === 'SIN REVISAR' ? 'Sin revisar' : esc(f.ARTICULO || f.CODIGO_ARTICULO || '')}${e === 'INCOMPLETA' ? ' · <i>faltan datos</i>' : ''}</span></button>`;
     }).join('');
-    return `<section class="tarjeta">
-      <h2>Tomar datos por posición</h2>
+    const conflictos = estado.conflictos.map((c, i) => `<div class="conflicto"><b>${esc(c.codigo)}</b>: ${esc(c.por || 'Otra persona')} la cambió${c.en ? ` el ${esc(new Date(c.en).toLocaleString('es-CO'))}` : ''}.<br>
+      Suya: ${esc(resumenDatos(c.servidor))}<br>Tuya: ${esc(resumenDatos(c.mio))}<br>
+      <button class="boton" data-conf="${i}" data-r="mia">Dejar la mía</button><button class="boton sec" data-conf="${i}" data-r="suya">Usar la suya</button></div>`).join('');
+    const modo = estado.tarea ? '' : estado.conSesion ? '<p class="nota">Sesión de Luis: lo que guardes se comparte con todos.</p>' : '<p class="nota">Sin tarea ni sesión: los datos quedan solo en este celular. Para compartirlos, abre el enlace de una tarea o inicia sesión en "Tareas".</p>';
+    return `${bannerTarea()}${conflictos ? `<section class="tarjeta"><h2>⚠ Cambios al mismo tiempo</h2><p class="nota">Otra persona cambió estas posiciones mientras tú trabajabas. Elige cuál dato queda.</p>${conflictos}</section>` : ''}
+    <section class="tarjeta">
+      <h2>Tomar datos por posición</h2>${modo}
       <p class="nota">Recorre el pasillo en el orden de la ruta. Toca cada posición y registra el artículo que hay. Las vacías márcalas como vacías: no cuentan.</p>
       <div class="fila">
-        <label>Zona<select id="tZona">${ZONAS.map((z) => `<option ${z.zona === zona ? 'selected' : ''}>${esc(z.zona)}</option>`).join('')}</select></label>
+        <label>Zona<select id="tZona">${zonasVisibles.map((z) => `<option ${z.zona === zona ? 'selected' : ''}>${esc(z.zona)}</option>`).join('')}</select></label>
         <label>Pasillo<select id="tPasillo">${pasillos.map((x) => `<option ${x === pas ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
         <label>Mostrar<select id="tFiltro"><option value="todas" ${filtro === 'todas' ? 'selected' : ''}>Todas</option><option value="pendientes" ${filtro === 'pendientes' ? 'selected' : ''}>Pendientes</option><option value="completas" ${filtro === 'completas' ? 'selected' : ''}>Completas</option></select></label>
       </div>
@@ -202,6 +336,38 @@ const pantallas = {
       <h2>Pasar los datos a la hoja</h2>
       <p class="nota">Copia todo lo tomado y pégalo en la hoja UBICACIONES (o guárdalo como respaldo).</p>
       <button class="boton sec" id="copiarToma">Copiar datos tomados</button><button class="boton sec" id="descargarToma">Descargar CSV</button>
+    </section>`;
+  },
+
+  tareas() {
+    if (!estado.conSesion) {
+      return `<section class="tarjeta"><h2>Tareas y usuarios (solo Luis)</h2>
+        <p class="nota">Entra con tu cuenta de la Central de Luis (la misma de Mis APK).</p>
+        <form id="formLogin" class="fila"><label>Correo<input name="correo" type="email" autocomplete="username"></label>
+        <label>Contraseña<input name="clave" type="password" autocomplete="current-password"></label><button class="boton">Entrar</button></form>
+        <div id="loginMsg"></div></section>`;
+    }
+    const pas = ZONAS.map((z) => `<div class="grupo-pas"><small>${esc(z.zona)}</small>${z.pasillos.map((p) => `<label class="chk"><input type="checkbox" name="pas" value="${p}"> ${p}</label>`).join('')}</div>`).join('');
+    const u = estado.usuarios;
+    const t = estado.tareas || [];
+    const color = { ABIERTA: 'MEDIO', 'EN CURSO': 'TOPE', CERRADA: 'BASE', ANULADA: 'falta' };
+    return `<section class="tarjeta"><h2>Nueva tarea para enviar por WhatsApp</h2>
+      <form id="formTarea">
+        <div class="fila"><label>Para (nombre)<input name="asignado_a" required></label><label>Título<input name="titulo" placeholder="Ej: Toma pasillo 12"></label><label>El enlace dura (días)<input name="dias" type="number" value="3" min="1" max="30"></label></div>
+        <p class="nota">Pasillos de la tarea:</p>${pas}
+        <button class="boton">Crear enlace</button>
+      </form><div id="nuevaTarea">${estado.ultimaTarea ? tarjetaEnlace(estado.ultimaTarea) : ''}</div></section>
+    <section class="tarjeta"><h2>Usuarios de la app</h2>
+      ${u ? `<div class="cifras"><div class="cifra"><b>${u.total}</b><span>celulares que la han abierto</span></div><div class="cifra"><b>${u.apk}</b><span>con la APK</span></div><div class="cifra"><b>${u.web}</b><span>por la página web</span></div><div class="cifra"><b>${u.activos7}</b><span>activos últimos 7 días</span></div></div>
+        <div class="tabla"><table><tr><th>Nombre</th><th>Tipo</th><th>Versión</th><th>Último uso</th></tr>${u.lista.slice(0, 15).map((d) => `<tr><td>${esc(d.nombre || 'Sin nombre')}</td><td>${esc(d.plataforma)}</td><td>${esc(d.version_app)}</td><td>${esc(new Date(d.ultima_vez).toLocaleString('es-CO'))}</td></tr>`).join('')}</table></div>` : '<p class="nota">Cargando…</p>'}
+    </section>
+    <section class="tarjeta"><h2>Tareas enviadas</h2>
+      ${t.length ? `<div class="tabla"><table><tr><th>Para</th><th>Pasillos</th><th>Estado</th><th class="num">Enviadas</th><th></th></tr>${t.map((x) => `<tr><td>${esc(x.asignado_a)}<br><small>${esc(x.titulo)}</small></td><td>${esc(x.pasillos.join(', '))}</td><td><span class="pill ${color[x.estado]}">${esc(x.estado)}</span></td><td class="num">${x.resumen?.guardadas || 0}</td><td>${['ABIERTA', 'EN CURSO'].includes(x.estado) ? `<a class="boton sec" href="${mensajeWhatsApp(x)}" target="_blank" rel="noopener">WhatsApp</a><button class="boton peligro" data-anular="${esc(x.id)}">Anular</button>` : ''}</td></tr>`).join('')}</table></div>` : '<p class="nota">Todavía no hay tareas.</p>'}
+    </section>
+    <section class="tarjeta"><h2>Información compartida</h2>
+      <p class="nota">Una sola información para todos: baja lo que los operadores ya enviaron, o sube lo que tú tomaste en este celular.</p>
+      <button class="boton" id="bajarTodo">Bajar toda la información</button><button class="boton sec" id="subirMio">Subir mis cambios (${pendientes().length})</button>
+      <button class="boton sec" id="salirSesion">Cerrar sesión</button>
     </section>`;
   },
 
@@ -218,11 +384,12 @@ const pantallas = {
         <div class="cifra"><b>${d.av.VACIA}</b><span>vacías (no cuentan)</span></div>
       </div>
       <div class="aviso ok"><b>Siguiente paso:</b> ${esc(d.siguiente)}</div>
+      ${estado.conocimiento.length ? `<h3>Aprendizaje del día</h3>${estado.conocimiento.slice(0, 3).map((k) => `<details class="aprendizaje"><summary>${esc(k.fecha)} · ${esc(k.tema)}: ${esc(k.titulo)}</summary><p>${esc(k.contenido)}</p>${(k.fuentes || []).length ? `<p class="nota">Fuentes: ${(k.fuentes || []).slice(0, 3).map((f) => `<a href="${esc(f.url || f)}" target="_blank" rel="noopener">${esc(f.titulo || f.url || f)}</a>`).join(' · ')}</p>` : ''}</details>`).join('')}` : ''}
       ${d.mejoras.length ? `<h3>Mejoras sugeridas</h3><ol class="mejoras">${d.mejoras.map((m) => `<li>${esc(m.texto)}</li>`).join('')}</ol>` : ''}
     </section>
     <section class="tarjeta">
       <h2>Pregúntale al agente</h2>
-      <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Cómo tomo las medidas?', '¿Qué significa BASE, MEDIO y TOPE?']
+      <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Qué aprendiste hoy?', '¿Cómo tomo las medidas?', '¿Qué significa BASE, MEDIO y TOPE?']
         .map((q) => `<button class="boton sec" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
       <div class="chat" id="chat">${chat || '<p class="nota">Ejemplos: "¿cómo voy en el pasillo 12?", "¿dónde va el aceite?", "¿qué movimientos hago en alimentos?"</p>'}</div>
       <form id="formChat" class="fila"><label>Tu pregunta<input id="pregunta" autocomplete="off" placeholder="Escribe aquí…"></label><button class="boton">Preguntar</button></form>
@@ -430,6 +597,26 @@ function simularTodos() {
 
 
 // ---------- Formulario de una posición ----------
+function tarjetaEnlace(t) {
+  return `<div class="aviso ok"><b>Enlace listo para ${esc(t.asignado_a)}</b> (pasillos ${esc(t.pasillos.join(', '))}). Sirve una sola vez y vence el ${esc(new Date(t.expira_en).toLocaleDateString('es-CO'))}.<br>
+    <a class="boton" href="${mensajeWhatsApp(t)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="boton sec" id="copiarEnlace" data-enlace="${esc(enlaceTarea(t.token))}">Copiar enlace</button></div>`;
+}
+
+async function cargarAdmin() {
+  try {
+    const sesion = await sesionVigente();
+    if (!sesion) { estado.conSesion = false; cerrarSesion(); mostrar('tareas'); return; }
+    const [u, t] = await Promise.all([llamar('usuarios', {}, sesion), llamar('tareas', {}, sesion)]);
+    estado.usuarios = u; estado.tareas = t.tareas;
+    if (pestanaActual === 'tareas') mostrar('tareas');
+  } catch (e) { notificar(e.message, 'error'); }
+}
+
+function resumenDatos(d = {}) {
+  if (d.ESTADO === 'VACIA') return 'vacía';
+  return [d.ARTICULO, d.CODIGO_ARTICULO, d.LARGO_A_MM && `${d.LARGO_A_MM}×${d.ANCHO_B_MM}×${d.ALTO_H_MM} mm`, d.PESO_KG && `${d.PESO_KG} kg`, d.EMPAQUE, d.LIQUIDO === 'SI' && 'líquido', d.DELICADO === 'SI' && 'delicado'].filter(Boolean).join(' · ') || 'sin datos';
+}
+
 function abrirFormulario(codigo) {
   const f = estado.filas.find((x) => x.CODIGO === codigo);
   if (!f) return;
@@ -440,6 +627,7 @@ function abrirFormulario(codigo) {
   fondo.className = 'dialogo';
   fondo.innerHTML = `<form class="caja formulario" id="formPos">
     <h2>${esc(f.CODIGO)} <small>${esc(f.SECCION)} · ruta ${esc(f.SECUENCIA_RUTA)}</small></h2>
+    ${f._por && f._por !== miNombre() && ['COMPLETA', 'INCOMPLETA', 'VACIA'].includes(estadoDe(f)) ? `<div class="aviso">⚠ Esta posición ya fue parametrizada por <b>${esc(f._por)}</b>${f._en ? ` el ${esc(new Date(f._en).toLocaleString('es-CO'))}` : ''}. Puedes editarla: tu cambio reemplaza el anterior y queda en el historial.</div>` : ''}
     <datalist id="listaArt">${[...cat.values()].map((a) => `<option value="${esc(a.CODIGO_ARTICULO)}">${esc(a.ARTICULO)}</option>`).join('')}</datalist>
     <label>Código del artículo<input name="CODIGO_ARTICULO" list="listaArt" inputmode="numeric" value="${v('CODIGO_ARTICULO')}" autocomplete="off"></label>
     <label>Artículo<input name="ARTICULO" value="${v('ARTICULO')}" autocomplete="off"></label>
@@ -501,7 +689,7 @@ function abrirFormulario(codigo) {
     return lista.slice(i + 1).find((x) => ['SIN REVISAR', 'INCOMPLETA'].includes(estadoDe(x)));
   };
   const terminar = () => {
-    guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
+    guardarFilas(); recalcular(); cerrar(); mostrar('tomar'); programarEnvio();
     const sig = siguiente();
     if (sig) abrirFormulario(sig.CODIGO); else notificar('Pasillo terminado');
   };
@@ -516,17 +704,18 @@ function abrirFormulario(codigo) {
       return;
     }
     if (Number(datos.ANCHO_B_MM) > Number(datos.LARGO_A_MM) && Number(datos.LARGO_A_MM) > 0) [datos.LARGO_A_MM, datos.ANCHO_B_MM] = [datos.ANCHO_B_MM, datos.LARGO_A_MM];
-    Object.assign(f, datos, { ACTUALIZADO: new Date().toISOString() });
+    Object.assign(f, datos, { ACTUALIZADO: new Date().toISOString(), _pendiente: true });
     f.ESTADO = estadoDe({ ...f, ESTADO: '' });
     terminar();
   });
   $('#vaciaPos', fondo).addEventListener('click', () => {
     for (const k of ['ARTICULO', 'CODIGO_ARTICULO', 'LARGO_A_MM', 'ANCHO_B_MM', 'ALTO_H_MM', 'PESO_KG', 'EMPAQUE', 'LIQUIDO', 'DELICADO', 'MAX_CAJAS_ENCIMA']) delete f[k];
-    f.ESTADO = 'VACIA'; f.ACTUALIZADO = new Date().toISOString();
+    f.ESTADO = 'VACIA'; f.ACTUALIZADO = new Date().toISOString(); f._pendiente = true;
     terminar();
   });
   $('#dividirPos', fondo)?.addEventListener('click', () => {
     estado.filas = subdividir(estado.filas, f.CODIGO);
+    estado.filas.filter((x) => x.CODIGO.startsWith(f.CODIGO)).forEach((x) => { x._pendiente = true; });
     guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
     abrirFormulario(`${f.CODIGO}A`);
   });
@@ -552,6 +741,7 @@ function mostrar(tab) {
   document.querySelectorAll('#pestanas button').forEach((b) => b.classList.toggle('activa', b.dataset.tab === tab));
   $('#contenido').innerHTML = pantallas[tab]();
   conectar(tab);
+  conectarBanner();
   window.scrollTo(0, 0);
 }
 
@@ -576,6 +766,36 @@ function conectar(tab) {
       }
     });
   }
+  if (tab === 'tareas') {
+    $('#formLogin')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try { await iniciarSesion(fd.get('correo'), fd.get('clave')); estado.conSesion = true; mostrar('tareas'); cargarAdmin(); }
+      catch (err) { $('#loginMsg').innerHTML = `<div class="aviso error">${esc(err.message)}</div>`; }
+    });
+    $('#formTarea')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const pasillos = fd.getAll('pas');
+      if (!pasillos.length) { notificar('Elige al menos un pasillo', 'error'); return; }
+      try {
+        const r = await llamar('crear_tarea', { asignado_a: fd.get('asignado_a'), titulo: fd.get('titulo'), dias: Number(fd.get('dias')), pasillos }, await sesionVigente());
+        estado.ultimaTarea = r.tarea; cargarAdmin(); mostrar('tareas');
+      } catch (err) { notificar(err.message, 'error'); }
+    });
+    $('#copiarEnlace')?.addEventListener('click', (e) => copiar(e.target.dataset.enlace));
+    document.querySelectorAll('[data-anular]').forEach((b) => b.addEventListener('click', async () => {
+      if (!(await confirmar('¿Anular esta tarea? El enlace deja de funcionar.'))) return;
+      try { await llamar('anular_tarea', { id: b.dataset.anular }, await sesionVigente()); cargarAdmin(); } catch (err) { notificar(err.message, 'error'); }
+    }));
+    $('#bajarTodo')?.addEventListener('click', async () => {
+      try { const r = await llamar('posiciones', {}, await sesionVigente()); aplicarServidor(r.posiciones); notificar(`Recibidas ${r.posiciones.length} posiciones`); mostrar('tareas'); }
+      catch (err) { notificar(err.message, 'error'); }
+    });
+    $('#subirMio')?.addEventListener('click', () => sincronizar());
+    $('#salirSesion')?.addEventListener('click', () => { cerrarSesion(); estado.conSesion = false; mostrar('tareas'); });
+    if (estado.conSesion && !estado.usuarios) cargarAdmin();
+  }
   if (tab === 'tomar') {
     $('#tZona').addEventListener('change', (e) => { estado.tomaZona = e.target.value; estado.tomaPasillo = ''; mostrar('tomar'); });
     $('#tPasillo').addEventListener('change', (e) => { estado.tomaPasillo = e.target.value; mostrar('tomar'); });
@@ -585,6 +805,18 @@ function conectar(tab) {
       abrirFormulario(b.dataset.cod);
     }));
     $('#copiarToma').addEventListener('click', () => copiar(csvToma()));
+    document.querySelectorAll('[data-conf]').forEach((b) => b.addEventListener('click', () => {
+      const c = estado.conflictos[Number(b.dataset.conf)];
+      const f = estado.filas.find((x) => x.CODIGO === c.codigo);
+      if (b.dataset.r === 'mia') { f._version = c.version; f._pendiente = true; }
+      else {
+        for (const k of Object.keys(f)) if (!['CODIGO', 'SECCION', 'PASILLO', 'MODULO', 'POSICION', 'SUBPOSICION', 'SECUENCIA_RUTA'].includes(k)) delete f[k];
+        Object.assign(f, c.servidor, { _version: c.version, _por: c.por, _en: c.en });
+      }
+      estado.conflictos = estado.conflictos.filter((x) => x !== c);
+      guardar('conflictos', estado.conflictos); guardarFilas(); recalcular(); mostrar('tomar');
+      if (b.dataset.r === 'mia') programarEnvio();
+    }));
     $('#descargarToma').addEventListener('click', () => descargar('ubicaciones-tomadas.csv', csvToma()));
   }
   if (tab === 'agente') {
@@ -664,3 +896,8 @@ function conectar(tab) {
 document.querySelectorAll('#pestanas button').forEach((b) => b.addEventListener('click', () => mostrar(b.dataset.tab)));
 recalcular();
 mostrar(pestanaActual);
+alIniciar();
+// Página web sin internet (no aplica dentro de la APK ni de claude.ai)
+try {
+  if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor && location.hostname.endsWith('github.io')) navigator.serviceWorker.register('sw.js');
+} catch { /* sin soporte */ }

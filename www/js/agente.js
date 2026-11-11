@@ -103,6 +103,17 @@ function buscarArticulo(texto, posiciones) {
   return puntos ? mejor : null;
 }
 
+// Busca en el aprendizaje diario las entradas que más se parecen a la pregunta.
+export function buscarConocimiento(pregunta, conocimiento) {
+  const palabras = sinTildes(pregunta).split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !['como', 'para', 'esto', 'esta', 'cual', 'cuales', 'donde', 'sobre', 'tiene', 'hacer'].includes(w));
+  if (!palabras.length) return [];
+  const puntuadas = conocimiento.map((k) => {
+    const texto = sinTildes(`${k.tema} ${k.titulo} ${k.contenido}`);
+    return { k, p: palabras.filter((w) => texto.includes(w)).length };
+  }).filter((x) => x.p >= Math.min(2, palabras.length)).sort((a, b) => b.p - a.p);
+  return puntuadas.slice(0, 2).map((x) => x.k);
+}
+
 // Devuelve una lista de párrafos (texto plano) como respuesta.
 export function responder(pregunta, ctx) {
   const t = sinTildes(pregunta);
@@ -116,6 +127,12 @@ export function responder(pregunta, ctx) {
       '• Dónde debe ir un artículo y por qué.',
       '• Cómo tomar las medidas y qué significa BASE, MEDIO y TOPE.',
       'Ejemplos: "¿cómo voy en el pasillo 12?", "¿qué movimientos hago primero en alimentos?", "¿dónde va el aceite?"'];
+  }
+
+  if (/aprendi|aprendizaje|que sabes de|hoy aprend|novedad/.test(t)) {
+    const k = ctx.conocimiento || [];
+    if (!k.length) return ['Todavía no tengo aprendizaje guardado en este celular. Cuando haya internet lo bajo solo (cada día aprendo de gestión logística, WPMS/WMS, SAP y análisis de datos).'];
+    return ['Lo último que aprendí:', ...k.slice(0, 3).map((x) => `• ${x.fecha} · ${x.tema}: ${x.titulo}. ${x.contenido.slice(0, 220)}${x.contenido.length > 220 ? '…' : ''}`)];
   }
 
   if (/medir|medida|como tomo|tomar dato|cm|centimetro|pesar/.test(t)) {
@@ -197,6 +214,9 @@ export function responder(pregunta, ctx) {
     return [`Estiba configurada: ${p.largo} × ${p.ancho} mm, base ${p.altoBase} mm, altura máxima total ${p.alturaMaxTotal} mm, carga máxima ${p.cargaMax} kg.`,
       ctx.paletConfirmado ? 'Estos valores ya fueron confirmados en Ajustes.' : 'Ojo: son valores de ejemplo hasta que los confirmes con el CEDI en Ajustes.'];
   }
+
+  const saber = buscarConocimiento(pregunta, ctx.conocimiento || []);
+  if (saber.length) return [...saber.flatMap((k) => [`${k.tema} — ${k.titulo} (${k.fecha}):`, k.contenido]), 'Esto viene del aprendizaje diario del agente.'];
 
   return ['No entendí bien la pregunta. Prueba con: "¿cómo voy?", "¿qué mejoras hay en el pasillo 12?", "¿qué movimientos hago primero?", "¿dónde va el arroz?" o "¿cómo tomo las medidas?".'];
 }
