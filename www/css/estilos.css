@@ -47,3 +47,7 @@ canvas.capa { width: 100%; border-radius: 8px; border: 1px solid var(--borde); }
 .leyenda i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
 input[type=range] { width: 100%; min-height: 40px; }
 .pie { text-align: center; color: var(--gris); font-size: 12px; padding: 16px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--azul); color: #fff; padding: 12px 18px; border-radius: 10px; z-index: 50; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+.dialogo { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 40; padding: 16px; }
+.dialogo .caja { background: #fff; border-radius: 12px; padding: 16px; max-width: 520px; width: 100%; }
+.dialogo textarea { width: 100%; font-size: 13px; margin-bottom: 8px; }

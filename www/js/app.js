@@ -84,9 +84,43 @@ function descargar(nombre, texto, tipo = 'text/csv') {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
+// Aviso dentro de la página (en algunas vistas no se permiten ventanas emergentes).
+function notificar(texto, tipo = 'ok') {
+  const d = document.createElement('div');
+  d.className = `toast ${tipo}`;
+  d.textContent = texto;
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 3500);
+}
+
+// Pregunta Sí/No dentro de la página. Devuelve una promesa con true o false.
+function confirmar(texto) {
+  return new Promise((resolver) => {
+    const fondo = document.createElement('div');
+    fondo.className = 'dialogo';
+    fondo.innerHTML = `<div class="caja"><p></p><button class="boton peligro" data-r="1">Sí</button><button class="boton sec" data-r="0">No</button></div>`;
+    fondo.querySelector('p').textContent = texto;
+    fondo.addEventListener('click', (e) => {
+      const r = e.target.dataset?.r;
+      if (r === undefined) return;
+      fondo.remove();
+      resolver(r === '1');
+    });
+    document.body.appendChild(fondo);
+  });
+}
+
 async function copiar(texto) {
-  try { await navigator.clipboard.writeText(texto); alert('Copiado. Pégalo en Excel o en WhatsApp.'); }
-  catch { prompt('Copia este texto:', texto); }
+  try { await navigator.clipboard.writeText(texto); notificar('Copiado. Pégalo en Excel o en WhatsApp.'); }
+  catch {
+    // Si no deja copiar, se muestra el texto para seleccionarlo a mano.
+    const fondo = document.createElement('div');
+    fondo.className = 'dialogo';
+    fondo.innerHTML = '<div class="caja"><p>Selecciona todo y cópialo:</p><textarea rows="10"></textarea><button class="boton">Cerrar</button></div>';
+    fondo.querySelector('textarea').value = texto;
+    fondo.querySelector('button').addEventListener('click', () => fondo.remove());
+    document.body.appendChild(fondo);
+  }
 }
 
 // ---------- Pantallas ----------
@@ -318,8 +352,10 @@ function simularTodos() {
     filas.push({ PEDIDO: p, CAJAS: actual.resumen.cajas, ESTIBAS_ACTUAL: actual.resumen.estibas, MAL_PUESTAS_ACTUAL: actual.resumen.inversiones, SOBREPESO_ACTUAL: actual.resumen.sobrecarga,
       ESTIBAS_PROPUESTA: propuesta?.resumen.estibas ?? '', MAL_PUESTAS_PROPUESTA: propuesta?.resumen.inversiones ?? '', SOBREPESO_PROPUESTA: propuesta?.resumen.sobrecarga ?? '' });
   }
-  $('#resultadoPedido').innerHTML = `<h3>${pedidos.length} pedidos</h3>${tablaComparacion(suma(ra), rp.length ? suma(rp) : null)}<button class="boton sec" id="exportarPrueba">Descargar resultado (CSV)</button>`;
-  $('#exportarPrueba').addEventListener('click', () => descargar('prueba-pedidos.csv', aCSV(filas, Object.keys(filas[0] || {}).map((k) => [k, k]))));
+  $('#resultadoPedido').innerHTML = `<h3>${pedidos.length} pedidos</h3>${tablaComparacion(suma(ra), rp.length ? suma(rp) : null)}<button class="boton sec" id="exportarPrueba">Descargar resultado (CSV)</button><button class="boton sec" id="copiarPrueba">Copiar resultado</button>`;
+  const csv = () => aCSV(filas, Object.keys(filas[0] || {}).map((k) => [k, k]));
+  $('#exportarPrueba').addEventListener('click', () => descargar('prueba-pedidos.csv', csv()));
+  $('#copiarPrueba').addEventListener('click', () => copiar(csv()));
 }
 
 // ---------- Navegación y eventos ----------
@@ -412,10 +448,10 @@ function conectar(tab) {
       estado.reglas = { ...estado.reglas, soporteMinimo: Math.min(1, Math.max(0.3, n('#aS') / 100)) };
       estado.paletConfirmado = true;
       guardar('palet', estado.palet); guardar('reglas', estado.reglas); guardar('paletConfirmado', true);
-      alert('Guardado');
+      notificar('Guardado');
     });
-    $('#borrar').addEventListener('click', () => {
-      if (!confirm('¿Borrar las ubicaciones y pedidos cargados en este equipo?')) return;
+    $('#borrar').addEventListener('click', async () => {
+      if (!(await confirmar('¿Borrar las ubicaciones y pedidos cargados en este equipo?'))) return;
       borrarTodo();
       estado.filas = []; estado.pedidos = []; estado.paletConfirmado = false; estado.palet = PALET_EJEMPLO;
       recalcular(); mostrar('inicio');

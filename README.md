@@ -3,6 +3,7 @@
 App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la ruta de picking, el palet salga bien armado: pesado abajo, delicado arriba. Calcula y muestra los palets en 3D.
 
 - **Web:** se publica en Vercel.
+- **Página en claude.ai (artefacto):** https://claude.ai/artifact/8zqDZDYTg5befBxABNSscH (slug 40c31478-bdde-44ff-80f0-c6b66dc1553e). Se actualiza con `npm run artefacto` y volviendo a publicar la carpeta `artefacto/`.
 - **APK de Android:** se compila sola en GitHub cada vez que se sube un cambio a `main`.
   Descarga: `https://github.com/luismendoza122/app-paletizado-3d/releases/latest/download/paletizado-3d.apk`
 
