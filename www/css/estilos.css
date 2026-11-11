@@ -1,0 +1,49 @@
+:root {
+  --azul: #16324f; --azul2: #2f6fdd; --fondo: #f4f6f8; --tarjeta: #ffffff; --texto: #1b2430; --gris: #5b6775;
+  --verde: #2a9d5c; --naranja: #e07b2a; --rojo: #d62828; --borde: #d8dee6;
+  --base: #2a9d5c; --medio: #c9a227; --tope: #2f6fdd;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fondo); color: var(--texto); font-size: 16px; }
+.barra { background: var(--azul); color: #fff; padding: 14px 16px; padding-top: max(14px, env(safe-area-inset-top)); }
+.titulo { font-weight: 700; font-size: 20px; }
+.sub { display: block; font-weight: 400; font-size: 13px; opacity: .8; }
+.pestanas { display: flex; gap: 6px; overflow-x: auto; padding: 8px; background: #fff; border-bottom: 1px solid var(--borde); position: sticky; top: 0; z-index: 5; }
+.pestanas button { flex: 0 0 auto; min-height: 48px; padding: 0 14px; border: 1px solid var(--borde); background: #fff; border-radius: 24px; font-size: 15px; font-weight: 600; color: var(--azul); }
+.pestanas button.activa { background: var(--azul); color: #fff; border-color: var(--azul); }
+main { padding: 12px; max-width: 1100px; margin: 0 auto; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.tarjeta h2 { margin: 0 0 10px; font-size: 18px; }
+.tarjeta h3 { margin: 12px 0 8px; font-size: 16px; }
+.nota { color: var(--gris); font-size: 14px; margin: 6px 0; }
+.aviso { background: #fff4e5; border: 1px solid #f3c58b; border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+.error { background: #fdecec; border-color: #f1a7a7; }
+.ok { background: #e8f6ee; border-color: #9fd8b6; }
+.boton { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--azul2); color: #fff; font-size: 16px; font-weight: 600; text-decoration: none; cursor: pointer; margin: 4px 6px 4px 0; }
+.boton.sec { background: #fff; color: var(--azul2); border: 2px solid var(--azul2); }
+.boton.peligro { background: var(--rojo); }
+.boton:disabled { opacity: .5; }
+.fila { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+label { display: flex; flex-direction: column; font-size: 14px; color: var(--gris); gap: 4px; min-width: 130px; flex: 1 1 130px; }
+input, select { min-height: 48px; font-size: 16px; padding: 0 10px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; color: var(--texto); }
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.cifra { background: var(--fondo); border-radius: 10px; padding: 10px; }
+.cifra b { display: block; font-size: 24px; }
+.cifra span { font-size: 13px; color: var(--gris); }
+.tabla { width: 100%; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--borde); vertical-align: top; }
+th { background: var(--fondo); position: sticky; top: 0; }
+td.num, th.num { text-align: right; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #fff; }
+.pill.BASE { background: var(--base); } .pill.MEDIO { background: var(--medio); } .pill.TOPE { background: var(--tope); }
+.pill.falta { background: #8a94a1; }
+.marca { display: inline-block; font-size: 11px; font-weight: 700; border: 1px solid var(--borde); border-radius: 6px; padding: 1px 5px; margin-right: 3px; }
+.mejor { color: var(--verde); font-weight: 700; } .peor { color: var(--rojo); font-weight: 700; }
+.visor { width: 100%; min-height: 260px; border-radius: 10px; overflow: hidden; background: #f4f6f8; }
+canvas.capa { width: 100%; border-radius: 8px; border: 1px solid var(--borde); }
+.capas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.leyenda i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+input[type=range] { width: 100%; min-height: 40px; }
+.pie { text-align: center; color: var(--gris); font-size: 12px; padding: 16px; }

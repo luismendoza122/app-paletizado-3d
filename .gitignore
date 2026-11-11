@@ -1,0 +1,8 @@
+node_modules/
+www/vendor/
+android/
+*.apk
+*.keystore
+*.jks
+.env
+.DS_Store

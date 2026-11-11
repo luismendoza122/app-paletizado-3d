@@ -1,0 +1,21 @@
+{
+  "name": "app-paletizado-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Conformación de palets en 3D y reubicación de artículos por pasillo – CEDI ATS R10 Valledupar",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node scripts/preparar.js",
+    "start": "node scripts/servidor.js"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  }
+}

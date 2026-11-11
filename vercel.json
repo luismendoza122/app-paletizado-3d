@@ -1,0 +1,5 @@
+{
+  "installCommand": "npm install --omit=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "www"
+}
