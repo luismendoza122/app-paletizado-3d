@@ -94,14 +94,27 @@ export function catalogo(filas) {
   return m;
 }
 
+// Unidades de medida: todo se guarda en milímetros.
+export const FACTOR_UNIDAD = { mm: 1, cm: 10, m: 1000 };
+export function aMilimetros(valor, unidad = 'mm') {
+  const x = Number(String(valor ?? '').trim().replace(',', '.'));
+  if (String(valor ?? '').trim() === '' || !Number.isFinite(x) || x <= 0) return '';
+  return String(Math.round(x * (FACTOR_UNIDAD[unidad] || 1)));
+}
+export function desdeMilimetros(mm, unidad = 'mm') {
+  const x = Number(mm);
+  if (!x) return '';
+  return String(Math.round((x / (FACTOR_UNIDAD[unidad] || 1)) * 1000) / 1000);
+}
+
 // Avisos de datos raros antes de guardar.
 export function revisarDatos(d) {
   const avisos = [];
   const n = (k) => Number(String(d[k] ?? '').replace(',', '.'));
   for (const [k, t] of [['LARGO_A_MM', 'Largo A'], ['ANCHO_B_MM', 'Ancho B'], ['ALTO_H_MM', 'Alto H']]) {
     const v = n(k);
-    if (d[k] !== '' && d[k] !== undefined && v > 0 && v < 60) avisos.push(`${t} = ${v} mm parece estar en centímetros (¿${v * 10} mm?)`);
-    if (v > 2000) avisos.push(`${t} = ${v} mm es muy grande para una caja`);
+    if (d[k] !== '' && d[k] !== undefined && v > 0 && v < 60) avisos.push(`${t} = ${v} mm (${v / 10} cm) es muy pequeño: revisa la unidad (mm, cm o m)`);
+    if (v > 2000) avisos.push(`${t} = ${v} mm (${v / 1000} m) es muy grande para una caja: revisa la unidad`);
   }
   const p = n('PESO_KG');
   if (d.PESO_KG !== '' && d.PESO_KG !== undefined && (p <= 0 || p > 80)) avisos.push(`Peso ${p} kg fuera de lo normal para una caja o bulto`);

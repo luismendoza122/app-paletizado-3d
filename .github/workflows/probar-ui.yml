@@ -1,0 +1,49 @@
+# Prueba la app en Chrome con Three.js y Excel reales: exportar a Excel, diagnóstico y video del armado.
+name: Probar interfaz
+
+on:
+  push:
+    branches: ['pruebas-**']
+  workflow_dispatch:
+
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preparar app
+        run: |
+          npm install
+          npm test
+          npm run build
+      - name: Instalar Chrome de pruebas
+        run: |
+          pip install playwright openpyxl
+          python -m playwright install --with-deps chromium
+      - name: Probar
+        run: |
+          node scripts/servidor.js &
+          sleep 2
+          python scripts/probar_ui.py
+      - name: Revisar archivos
+        if: always()
+        run: |
+          ls -la salida || true
+          python - <<'PYX'
+          import glob, openpyxl
+          for f in glob.glob('salida/*.xlsx'):
+              lb = openpyxl.load_workbook(f)
+              print(f, [(h, lb[h].max_row, [c.value for c in lb[h][1]][:6]) for h in lb.sheetnames])
+          PYX
+          for v in salida/*.mp4 salida/*.webm; do [ -f "$v" ] && ffprobe -v error -show_entries format=duration,size:stream=codec_name,width,height -of compact "$v"; done; true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: salida-prueba-ui
+          path: salida/

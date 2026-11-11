@@ -1,7 +1,7 @@
 // Pruebas de la toma de datos y del agente
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos } from '../www/js/datos/layout.js';
+import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, aMilimetros, desdeMilimetros } from '../www/js/datos/layout.js';
 import { articuloDesdeFila } from '../www/js/motor/articulo.js';
 import { calcularIndices } from '../www/js/motor/indice.js';
 import { diagnostico, responder, analizarPasillo } from '../www/js/agente.js';
@@ -37,9 +37,9 @@ test('dividir una posición crea A y B y la madre deja de contar', () => {
   assert.ok(Number(b.SECUENCIA_RUTA) < f.find((x) => x.CODIGO === '05-004x2').SECUENCIA_RUTA);
 });
 
-test('avisos: medidas en centímetros y peso raro', () => {
+test('avisos: medidas en otra unidad y peso raro', () => {
   const av = revisarDatos({ LARGO_A_MM: '40', ANCHO_B_MM: '30', ALTO_H_MM: '25', PESO_KG: '0' });
-  assert.ok(av.some((t) => t.includes('centímetros')));
+  assert.ok(av.some((t) => t.includes('revisa la unidad')));
   assert.ok(av.some((t) => t.includes('Peso')));
 });
 
@@ -88,4 +88,20 @@ test('agente: responde avance, movimientos y dónde va un artículo', () => {
   const donde = responder('¿dónde va el arroz?', ctx);
   assert.ok(donde[0].includes('Arroz 25kg'));
   assert.ok(responder('hola', ctx)[0].includes('agente'));
+});
+
+test('medidas en mm, cm o m se guardan en milímetros', () => {
+  assert.equal(aMilimetros('0,4', 'm'), '400');
+  assert.equal(aMilimetros('0.355', 'm'), '355');
+  assert.equal(aMilimetros('35,5', 'cm'), '355');
+  assert.equal(aMilimetros('355', 'mm'), '355');
+  assert.equal(aMilimetros('', 'm'), '');
+  assert.equal(aMilimetros('abc', 'cm'), '');
+  assert.equal(desdeMilimetros('355', 'm'), '0.355');
+  assert.equal(desdeMilimetros('355', 'cm'), '35.5');
+  assert.equal(desdeMilimetros('', 'cm'), '');
+  // 0,4 escrito en metros ya no es "muy pequeño"
+  const d = { LARGO_A_MM: aMilimetros('0,4', 'm'), ANCHO_B_MM: aMilimetros('0,3', 'm'), ALTO_H_MM: aMilimetros('0,25', 'm'), PESO_KG: '12' };
+  assert.deepEqual(revisarDatos(d), []);
+  assert.ok(revisarDatos({ ...d, LARGO_A_MM: '4' })[0].includes('revisa la unidad'));
 });

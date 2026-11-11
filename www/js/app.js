@@ -7,8 +7,9 @@ import { proponerReubicacion } from './motor/reubicacion.js';
 import { simularPedido } from './motor/simulacion.js';
 import { leerArchivo, aCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
-import { dibujar3D, dibujarCapa, nivelesDe, colorDe } from './visor.js';
-import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, COLUMNAS, ZONAS } from './datos/layout.js';
+import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
+import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
+import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
 import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
@@ -78,7 +79,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.3.0';
+const VERSION_APP = '0.4.0';
 function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -214,13 +215,24 @@ function mapaPropuesto() {
   return m;
 }
 
-function descargar(nombre, texto, tipo = 'text/csv') {
-  const blob = new Blob(['﻿' + texto], { type: `${tipo};charset=utf-8` });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = nombre;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+async function descargar(nombre, contenido, tipo = 'text/csv') {
+  const blob = contenido instanceof Blob ? contenido : new Blob(['\ufeff' + contenido], { type: `${tipo};charset=utf-8` });
+  try {
+    const r = await guardarArchivo(nombre, blob);
+    notificar(r === 'compartido' ? `Listo: ${nombre}. Elige dónde guardarlo o a quién enviarlo.` : `Descargado: ${nombre}`);
+  } catch (e) {
+    notificar(`No se pudo guardar ${nombre}: ${e.message || e}. Usa "Copiar" o abre la app en el navegador.`, 'error');
+  }
+}
+
+// Excel con las hojas que se pidan (por defecto, todo). Se puede editar en el PC y volver a cargar en Inicio.
+async function exportarExcel(base = 'paletizado-cedi', solo = null) {
+  try {
+    const todas = hojasExcel({ filas: estado.filas, posiciones: estado.posiciones, pedidos: estado.pedidos, propuesta: estado.propuesta,
+      pruebaPedidos: estado.pruebaPedidos, diag: diagnostico(contexto()) });
+    const hojas = solo ? Object.fromEntries(solo.filter((k) => todas[k]).map((k) => [k, todas[k]])) : todas;
+    await descargar(nombreArchivo(base, 'xlsx'), libroExcel(hojas));
+  } catch (e) { notificar(e.message || String(e), 'error'); }
 }
 
 // Aviso dentro de la página (en algunas vistas no se permiten ventanas emergentes).
@@ -284,6 +296,11 @@ const pantallas = {
         <div id="resultadoImport"></div>
       </section>
       <section class="tarjeta">
+        <h2>Exportar a Excel</h2>
+        <p class="nota">Un solo archivo con todas las hojas: UBICACIONES, ARTICULOS (con su clase), REUBICACION, PEDIDOS, PRUEBA_PEDIDOS y DIAGNOSTICO. Edita UBICACIONES o PEDIDOS en el PC (sin cambiar los títulos de las columnas ni el CODIGO) y vuelve a cargarlo arriba.</p>
+        <button class="boton" id="excelTodo">Descargar Excel completo</button>
+      </section>
+      <section class="tarjeta">
         <h2>2. Estado</h2>
         <div class="cifras">
           <div class="cifra"><b>${fmt(revisadas)} / ${fmt(total)}</b><span>posiciones revisadas</span></div>
@@ -333,9 +350,9 @@ const pantallas = {
       <div class="lista-pos">${filas || '<p class="nota">Nada que mostrar con este filtro.</p>'}</div>
     </section>
     <section class="tarjeta">
-      <h2>Pasar los datos a la hoja</h2>
-      <p class="nota">Copia todo lo tomado y pégalo en la hoja UBICACIONES (o guárdalo como respaldo).</p>
-      <button class="boton sec" id="copiarToma">Copiar datos tomados</button><button class="boton sec" id="descargarToma">Descargar CSV</button>
+      <h2>Pasar los datos a Excel</h2>
+      <p class="nota">Descarga todas las posiciones en Excel para revisarlas o completarlas en el PC; luego cárgalo en Inicio. También puedes copiarlas y pegarlas en la hoja UBICACIONES.</p>
+      <button class="boton" id="excelToma">Descargar Excel</button><button class="boton sec" id="copiarToma">Copiar datos tomados</button><button class="boton sec" id="descargarToma">Descargar CSV</button>
     </section>`;
   },
 
@@ -384,6 +401,7 @@ const pantallas = {
         <div class="cifra"><b>${d.av.VACIA}</b><span>vacías (no cuentan)</span></div>
       </div>
       <div class="aviso ok"><b>Siguiente paso:</b> ${esc(d.siguiente)}</div>
+      <div class="rapidas"><button class="boton" id="diagExcel">Diagnóstico en Excel</button><a class="boton sec" href="https://wa.me/?text=${encodeURIComponent(textoDiagnostico(d))}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="boton sec" id="diagCopiar">Copiar diagnóstico</button></div>
       ${estado.conocimiento.length ? `<h3>Aprendizaje del día</h3>${estado.conocimiento.slice(0, 3).map((k) => `<details class="aprendizaje"><summary>${esc(k.fecha)} · ${esc(k.tema)}: ${esc(k.titulo)}</summary><p>${esc(k.contenido)}</p>${(k.fuentes || []).length ? `<p class="nota">Fuentes: ${(k.fuentes || []).slice(0, 3).map((f) => `<a href="${esc(f.url || f)}" target="_blank" rel="noopener">${esc(f.titulo || f.url || f)}</a>`).join(' · ')}</p>` : ''}</details>`).join('')}` : ''}
       ${d.mejoras.length ? `<h3>Mejoras sugeridas</h3><ol class="mejoras">${d.mejoras.map((m) => `<li>${esc(m.texto)}</li>`).join('')}</ol>` : ''}
     </section>
@@ -431,7 +449,7 @@ const pantallas = {
       const filas = pr.movimientos.slice(0, 500).map((m, i) => `<tr><td class="num">${i + 1}</td><td>${esc(m.articulo)}<br><small>${esc(m.codigoArticulo)}</small></td><td><span class="pill ${m.clase}">${m.clase}</span></td><td>${esc(m.desde)}</td><td><b>${esc(m.hacia)}</b></td></tr>`).join('');
       res = `<div class="aviso ok">${pr.movimientos.length} movimientos propuestos · ${pr.ciclos} cadenas cerradas (cada una necesita una ubicación temporal libre).</div>
         ${pr.excepciones.length ? `<div class="aviso">${pr.excepciones.length} avisos:<br>${pr.excepciones.slice(0, 10).map(esc).join('<br>')}</div>` : ''}
-        <button class="boton" id="exportarPlan">Descargar plan (CSV)</button><button class="boton sec" id="copiarPlan">Copiar plan</button>
+        <button class="boton" id="excelPlan">Descargar plan (Excel)</button><button class="boton sec" id="exportarPlan">CSV</button><button class="boton sec" id="copiarPlan">Copiar plan</button>
         <a class="boton sec" href="#" data-ir="pedidos">Probar con pedidos</a>
         <div class="tabla"><table><tr><th class="num">#</th><th>Artículo</th><th>Clase</th><th>Desde</th><th>Hacia</th></tr>${filas}</table></div>`;
     }
@@ -522,12 +540,15 @@ function tablaComparacion(actual, propuesta) {
     }).join('')}</table></div>`;
 }
 
-async function mostrarEstiba(cont, estiba) {
+async function mostrarEstiba(cont, estiba, titulo = '') {
   const niveles = nivelesDe(estiba);
+  const puedeVideo = !!formatoVideo();
   cont.innerHTML = `
     <p class="nota">Estiba ${estiba.numero}: ${estiba.totalCajas} cajas · ${fmt(estiba.pesoTotal, 1)} kg · ${fmt(estiba.alturaTotal)} mm · ocupación ${fmt(estiba.usoVolumen * 100)} %${estiba.cgFuera ? ' · <b class="peor">centro de gravedad corrido</b>' : ''}</p>
     <div class="visor" id="visor3d"></div>
     <label>Armar hasta la caja <span id="nCaja">${estiba.totalCajas}</span><input type="range" id="rango" min="1" max="${estiba.totalCajas}" value="${estiba.totalCajas}"></label>
+    ${puedeVideo ? '<button class="boton" id="grabarVideo">🎬 Video del armado</button>' : '<p class="nota">Este equipo no permite grabar video.</p>'}
+    <div id="video"></div>
     <h3>Capas vistas desde arriba (número = orden de armado)</h3>
     <div class="capas">${niveles.map((n, i) => `<div><small>Capa ${i + 1} (desde ${n.desde} mm)</small><canvas class="capa" data-i="${i}"></canvas></div>`).join('')}</div>
     <div class="leyenda" id="leyenda"></div>`;
@@ -536,6 +557,23 @@ async function mostrarEstiba(cont, estiba) {
   const vistos = new Map();
   estiba.cajas.forEach((c) => { if (!vistos.has(c.codigo)) vistos.set(c.codigo, c.nombre); });
   $('#leyenda', cont).innerHTML = [...vistos].map(([cod, nom]) => `<span><i style="background:${colorDe(cod, estado.colores)}"></i>${esc(nom)}</span>`).join('') + '<span><i style="background:#d62828"></i>Con sobrepeso</span>';
+  $('#grabarVideo', cont)?.addEventListener('click', async (e) => {
+    const boton = e.currentTarget, zona = $('#video', cont);
+    boton.disabled = true;
+    zona.innerHTML = '<p class="nota">Grabando… <b id="pctVideo">0 %</b> (no cambies de pantalla)</p>';
+    try {
+      const nombre = titulo || `Estiba ${estiba.numero}`;
+      const v = await grabarVideo(estiba, estado.palet, estado.colores, { titulo: nombre, alAvanzar: (f) => { const x = $('#pctVideo', zona); if (x) x.textContent = `${Math.round(f * 100)} %`; } });
+      const archivo = `${nombreArchivo(`palet-${nombre}`.replace(/[^\w\-]+/g, '-').replace(/-+/g, '-').toLowerCase(), v.extension)}`;
+      const url = URL.createObjectURL(v.blob);
+      zona.innerHTML = `<video src="${url}" controls playsinline loop class="video-palet"></video>
+        <button class="boton" id="guardarVideo">Guardar o enviar video</button><p class="nota">${v.segundos} s · ${(v.blob.size / 1e6).toFixed(1)} MB · ${v.extension.toUpperCase()}</p>`;
+      $('#guardarVideo', zona).addEventListener('click', () => descargar(archivo, v.blob));
+    } catch (err) {
+      zona.innerHTML = `<div class="aviso error">${esc(err.message || String(err))}</div>`;
+    } finally { boton.disabled = false; }
+    await dibujar3D($('#visor3d', cont), estiba, estado.palet, estado.colores);
+  });
   $('#rango', cont).addEventListener('change', async (e) => {
     $('#nCaja', cont).textContent = e.target.value;
     await dibujar3D($('#visor3d', cont), estiba, estado.palet, estado.colores, Number(e.target.value));
@@ -570,7 +608,7 @@ async function mostrarPedido(pedido) {
     const sel = $('#verEst');
     const idx = Math.min(Number(sel.value) || 0, lista.length - 1);
     sel.innerHTML = lista.map((e, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>${esc(e.zona)} · estiba ${e.numero} · ${e.totalCajas} cajas</option>`).join('');
-    if (lista[idx]) await mostrarEstiba($('#vistaEstiba'), lista[idx]);
+    if (lista[idx]) await mostrarEstiba($('#vistaEstiba'), lista[idx], `Pedido ${pedido} · ${lista[idx].zona} · estiba ${lista[idx].numero}`);
     else $('#vistaEstiba').innerHTML = '';
   };
   $('#verEsc').addEventListener('change', pintar);
@@ -589,7 +627,9 @@ function simularTodos() {
     filas.push({ PEDIDO: p, CAJAS: actual.resumen.cajas, ESTIBAS_ACTUAL: actual.resumen.estibas, MAL_PUESTAS_ACTUAL: actual.resumen.inversiones, SOBREPESO_ACTUAL: actual.resumen.sobrecarga,
       ESTIBAS_PROPUESTA: propuesta?.resumen.estibas ?? '', MAL_PUESTAS_PROPUESTA: propuesta?.resumen.inversiones ?? '', SOBREPESO_PROPUESTA: propuesta?.resumen.sobrecarga ?? '' });
   }
-  $('#resultadoPedido').innerHTML = `<h3>${pedidos.length} pedidos</h3>${tablaComparacion(suma(ra), rp.length ? suma(rp) : null)}<button class="boton sec" id="exportarPrueba">Descargar resultado (CSV)</button><button class="boton sec" id="copiarPrueba">Copiar resultado</button>`;
+  estado.pruebaPedidos = filas;
+  $('#resultadoPedido').innerHTML = `<h3>${pedidos.length} pedidos</h3>${tablaComparacion(suma(ra), rp.length ? suma(rp) : null)}<button class="boton" id="excelPrueba">Descargar resultado (Excel)</button><button class="boton sec" id="exportarPrueba">CSV</button><button class="boton sec" id="copiarPrueba">Copiar resultado</button>`;
+  $('#excelPrueba').addEventListener('click', () => exportarExcel('prueba-pedidos', ['PRUEBA_PEDIDOS', 'PEDIDOS']));
   const csv = () => aCSV(filas, Object.keys(filas[0] || {}).map((k) => [k, k]));
   $('#exportarPrueba').addEventListener('click', () => descargar('prueba-pedidos.csv', csv()));
   $('#copiarPrueba').addEventListener('click', () => copiar(csv()));
@@ -622,6 +662,8 @@ function abrirFormulario(codigo) {
   if (!f) return;
   const cat = catalogo(estado.filas);
   const v = (k) => esc(f[k] ?? '');
+  let unidad = leer('unidad', 'mm');
+  const med = (k) => esc(desdeMilimetros(f[k], unidad));
   const opc = (k, valores) => valores.map((x) => `<button type="button" class="opcion ${String(f[k] ?? '').toUpperCase() === x ? 'sel' : ''}" data-campo="${k}" data-valor="${x}">${x === 'SI' ? 'SÍ' : x}</button>`).join('');
   const fondo = document.createElement('div');
   fondo.className = 'dialogo';
@@ -631,10 +673,11 @@ function abrirFormulario(codigo) {
     <datalist id="listaArt">${[...cat.values()].map((a) => `<option value="${esc(a.CODIGO_ARTICULO)}">${esc(a.ARTICULO)}</option>`).join('')}</datalist>
     <label>Código del artículo<input name="CODIGO_ARTICULO" list="listaArt" inputmode="numeric" value="${v('CODIGO_ARTICULO')}" autocomplete="off"></label>
     <label>Artículo<input name="ARTICULO" value="${v('ARTICULO')}" autocomplete="off"></label>
+    <div class="grupo"><span>Medidas en</span>${['mm', 'cm', 'm'].map((x) => `<button type="button" class="opcion unidad ${x === unidad ? 'sel' : ''}" data-unidad="${x}">${x}</button>`).join('')}</div>
     <div class="fila">
-      <label>Largo A (mm)<input name="LARGO_A_MM" type="number" inputmode="numeric" value="${v('LARGO_A_MM')}"></label>
-      <label>Ancho B (mm)<input name="ANCHO_B_MM" type="number" inputmode="numeric" value="${v('ANCHO_B_MM')}"></label>
-      <label>Alto H (mm)<input name="ALTO_H_MM" type="number" inputmode="numeric" value="${v('ALTO_H_MM')}"></label>
+      <label>Largo A (<span class="u">${unidad}</span>)<input name="LARGO_A_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('LARGO_A_MM')}"></label>
+      <label>Ancho B (<span class="u">${unidad}</span>)<input name="ANCHO_B_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ANCHO_B_MM')}"></label>
+      <label>Alto H (<span class="u">${unidad}</span>)<input name="ALTO_H_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ALTO_H_MM')}"></label>
       <label>Peso (kg)<input name="PESO_KG" type="number" inputmode="decimal" step="0.1" value="${v('PESO_KG')}"></label>
     </div>
     <div class="grupo"><span>Empaque</span>${opc('EMPAQUE', ['CAJA', 'BULTO'])}</div>
@@ -644,9 +687,9 @@ function abrirFormulario(codigo) {
       <div class="fila">
         <label>Cajas que aguanta encima<input name="MAX_CAJAS_ENCIMA" type="number" inputmode="numeric" value="${v('MAX_CAJAS_ENCIMA')}"></label>
         <label>Nivel<input name="NIVEL" value="${v('NIVEL')}"></label>
-        <label>Hueco ancho (mm)<input name="HUECO_ANCHO_MM" type="number" inputmode="numeric" value="${v('HUECO_ANCHO_MM')}"></label>
-        <label>Hueco fondo (mm)<input name="HUECO_FONDO_MM" type="number" inputmode="numeric" value="${v('HUECO_FONDO_MM')}"></label>
-        <label>Hueco alto (mm)<input name="HUECO_ALTO_MM" type="number" inputmode="numeric" value="${v('HUECO_ALTO_MM')}"></label>
+        <label>Hueco ancho (<span class="u">${unidad}</span>)<input name="HUECO_ANCHO_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('HUECO_ANCHO_MM')}"></label>
+        <label>Hueco fondo (<span class="u">${unidad}</span>)<input name="HUECO_FONDO_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('HUECO_FONDO_MM')}"></label>
+        <label>Hueco alto (<span class="u">${unidad}</span>)<input name="HUECO_ALTO_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('HUECO_ALTO_MM')}"></label>
         <label>Peso máx. del nivel (kg)<input name="PESO_MAX_KG" type="number" inputmode="decimal" value="${v('PESO_MAX_KG')}"></label>
       </div>
       <div class="grupo"><span>Bloqueada (no se mueve)</span>${opc('BLOQUEADA', ['NO', 'SI'])}</div>
@@ -664,7 +707,17 @@ function abrirFormulario(codigo) {
   const form = fondo.querySelector('form');
   const elegidos = {};
   ['EMPAQUE', 'LIQUIDO', 'DELICADO', 'BLOQUEADA'].forEach((k) => { elegidos[k] = String(f[k] ?? '').toUpperCase() || (k === 'BLOQUEADA' ? 'NO' : ''); });
-  form.querySelectorAll('.opcion').forEach((b) => b.addEventListener('click', () => {
+  // Cambiar la unidad convierte lo que ya está escrito
+  form.querySelectorAll('[data-unidad]').forEach((b) => b.addEventListener('click', () => {
+    const nueva = b.dataset.unidad;
+    form.querySelectorAll('[data-medida]').forEach((i) => {
+      if (i.value !== '') i.value = desdeMilimetros(aMilimetros(i.value, unidad), nueva) || i.value;
+    });
+    unidad = nueva; guardar('unidad', unidad);
+    form.querySelectorAll('.u').forEach((u) => { u.textContent = unidad; });
+    form.querySelectorAll('[data-unidad]').forEach((x) => x.classList.toggle('sel', x === b));
+  }));
+  form.querySelectorAll('.opcion[data-campo]').forEach((b) => b.addEventListener('click', () => {
     elegidos[b.dataset.campo] = b.dataset.valor;
     form.querySelectorAll(`.opcion[data-campo="${b.dataset.campo}"]`).forEach((x) => x.classList.toggle('sel', x === b));
   }));
@@ -673,7 +726,7 @@ function abrirFormulario(codigo) {
     const a = cat.get(form.CODIGO_ARTICULO.value.trim());
     if (!a) return;
     for (const [k, val] of Object.entries(a)) {
-      if (form[k] && form[k].tagName === 'INPUT') form[k].value = val;
+      if (form[k] && form[k].tagName === 'INPUT') form[k].value = form[k].dataset.medida !== undefined ? (desdeMilimetros(val, unidad) || val) : val;
       if (k in elegidos && val) {
         elegidos[k] = String(val).toUpperCase();
         form.querySelectorAll(`.opcion[data-campo="${k}"]`).forEach((x) => x.classList.toggle('sel', x.dataset.valor === elegidos[k]));
@@ -697,6 +750,10 @@ function abrirFormulario(codigo) {
     e.preventDefault();
     const datos = Object.fromEntries([...new FormData(form).entries()].map(([k, val]) => [k, String(val).trim()]));
     Object.assign(datos, elegidos);
+    // Se guarda siempre en milímetros
+    form.querySelectorAll('[data-medida]').forEach((i) => {
+      datos[i.name] = aMilimetros(i.value, unidad);
+    });
     const avisos = revisarDatos(datos);
     if (avisos.length && !avisado) {
       avisado = true;
@@ -748,6 +805,7 @@ function mostrar(tab) {
 function conectar(tab) {
   document.querySelectorAll('[data-ir]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); mostrar(a.dataset.ir); }));
   if (tab === 'inicio') {
+    $('#excelTodo').addEventListener('click', () => exportarExcel());
     $('#archivo').addEventListener('change', async (e) => {
       const archivo = e.target.files[0];
       if (!archivo) return;
@@ -756,7 +814,16 @@ function conectar(tab) {
       try {
         const r = await leerArchivo(archivo);
         const partes = [];
-        if (r.ubicaciones) { estado.filas = mezclar(estado.filas, r.ubicaciones); guardarFilas(); partes.push(`${r.ubicaciones.length} ubicaciones`); }
+        if (r.ubicaciones) {
+          // Lo que cambió en el Excel se marca para subirlo a la nube (una sola información para todos)
+          const antes = new Map(estado.filas.map((f) => [f.CODIGO, JSON.stringify(datosDe(f))]));
+          estado.filas = mezclar(estado.filas, r.ubicaciones);
+          let cambiadas = 0;
+          for (const f of estado.filas) if (antes.get(f.CODIGO) !== JSON.stringify(datosDe(f))) { if (!estado.tarea) f._pendiente = true; cambiadas++; }
+          guardarFilas();
+          if (cambiadas && !estado.tarea) programarEnvio();
+          partes.push(`${r.ubicaciones.length} ubicaciones (${cambiadas} con cambios)`);
+        }
         if (r.pedidos) { estado.pedidos = r.pedidos; guardar('pedidos', r.pedidos); partes.push(`${r.pedidos.length} líneas de pedidos`); }
         recalcular();
         mostrar('inicio');
@@ -818,10 +885,13 @@ function conectar(tab) {
       if (b.dataset.r === 'mia') programarEnvio();
     }));
     $('#descargarToma').addEventListener('click', () => descargar('ubicaciones-tomadas.csv', csvToma()));
+    $('#excelToma').addEventListener('click', () => exportarExcel('ubicaciones', ['UBICACIONES', 'ARTICULOS']));
   }
   if (tab === 'agente') {
     document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => preguntar(b.dataset.q)));
     $('#formChat').addEventListener('submit', (e) => { e.preventDefault(); preguntar($('#pregunta').value); });
+    $('#diagExcel').addEventListener('click', () => exportarExcel('diagnostico', ['DIAGNOSTICO', 'ARTICULOS', 'REUBICACION']));
+    $('#diagCopiar').addEventListener('click', () => copiar(textoDiagnostico(diagnostico(contexto()))));
   }
   if (tab === 'ubicaciones') {
     $('#fZona').addEventListener('change', (e) => { estado.filtroZona = e.target.value; estado.filtroPasillo = ''; mostrar('ubicaciones'); });
@@ -838,6 +908,7 @@ function conectar(tab) {
     });
     const plan = () => aCSV(estado.propuesta.movimientos.map((m, i) => ({ ...m, orden: i + 1 })), [['orden', 'ORDEN'], ['codigoArticulo', 'CODIGO_ARTICULO'], ['articulo', 'ARTICULO'], ['clase', 'CLASE'], ['desde', 'UBICACION_ACTUAL'], ['hacia', 'UBICACION_NUEVA'], ['pasillo', 'PASILLO']]);
     $('#exportarPlan')?.addEventListener('click', () => descargar('plan-reubicacion.csv', plan()));
+    $('#excelPlan')?.addEventListener('click', () => exportarExcel('plan-reubicacion', ['REUBICACION', 'ARTICULOS']));
     $('#copiarPlan')?.addEventListener('click', () => copiar(plan()));
   }
   if (tab === 'pedidos') {
@@ -872,7 +943,7 @@ function conectar(tab) {
         <div class="cifra"><b>${fmt(r.pesoTotal, 1)} kg</b><span>peso con estiba</span></div>
         <div class="cifra"><b>${fmt(r.usoArea * 100)} %</b><span>uso del área</span></div></div>
         <p class="nota">Lo que limita: ${nombres[r.limitante]}. ${esc(r.advertencias.join(' '))}</p><div id="vistaCalc"></div>`;
-      await mostrarEstiba($('#vistaCalc'), { numero: 1, cajas: r.colocaciones.map((c) => ({ ...c, nombre: art.nombre })), totalCajas: r.totalCajas, pesoTotal: r.pesoTotal, alturaTotal: r.alturaTotal, usoVolumen: (r.totalCajas * art.largo * art.ancho * art.alto) / (estado.palet.largo * estado.palet.ancho * (estado.palet.alturaMaxTotal - estado.palet.altoBase)) });
+      await mostrarEstiba($('#vistaCalc'), { numero: 1, cajas: r.colocaciones.map((c) => ({ ...c, nombre: art.nombre })), totalCajas: r.totalCajas, pesoTotal: r.pesoTotal, alturaTotal: r.alturaTotal, usoVolumen: (r.totalCajas * art.largo * art.ancho * art.alto) / (estado.palet.largo * estado.palet.ancho * (estado.palet.alturaMaxTotal - estado.palet.altoBase)) }, `Palet de ${art.nombre || 'un artículo'}`);
     });
   }
   if (tab === 'ajustes') {

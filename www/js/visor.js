@@ -38,18 +38,30 @@ export async function dibujar3D(contenedor, estiba, palet, colores, hastaOrden =
     contenedor.innerHTML = '<p class="nota">Vista 3D no disponible en este equipo. Abajo está la vista por capas.</p>';
     return false;
   }
-  const S = 0.001;
   const ancho = contenedor.clientWidth || 340;
   const alto = Math.max(260, Math.min(420, ancho * 0.9));
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(ancho, alto);
   contenedor.appendChild(renderer.domElement);
+  const { escena, centro } = armarEscena(estiba, palet, colores, hastaOrden);
+  const camara = new THREE.PerspectiveCamera(40, ancho / alto, 0.01, 50);
+  camara.position.set(centro.x + 2.2, 2.0, centro.z + 2.4);
+  const controls = Orbit ? new Orbit(camara, renderer.domElement) : null;
+  if (controls) { controls.target.copy(centro); controls.update(); }
+  else camara.lookAt(centro);
+  actual = { renderer, controls, frame: 0 };
+  const animar = () => { actual.frame = requestAnimationFrame(animar); controls?.update(); renderer.render(escena, camara); };
+  animar();
+  return true;
+}
+
+// Escena 3D de una estiba: madera + cajas. Devuelve las mallas en orden de armado (para el video).
+function armarEscena(estiba, palet, colores, hastaOrden = Infinity) {
+  const S = 0.001;
   const escena = new THREE.Scene();
   escena.background = new THREE.Color('#f4f6f8');
-  const camara = new THREE.PerspectiveCamera(40, ancho / alto, 0.01, 50);
   const centro = new THREE.Vector3((palet.largo / 2) * S, 0.6, (palet.ancho / 2) * S);
-  camara.position.set(centro.x + 2.2, 2.0, centro.z + 2.4);
   escena.add(new THREE.HemisphereLight('#ffffff', '#8899aa', 2.2));
   const luz = new THREE.DirectionalLight('#ffffff', 1.4);
   luz.position.set(3, 5, 2);
@@ -70,7 +82,8 @@ export async function dibujar3D(contenedor, estiba, palet, colores, hastaOrden =
   const geo = new THREE.BoxGeometry(1, 1, 1);
   const bordes = new THREE.EdgesGeometry(geo);
   const lineaMat = new THREE.LineBasicMaterial({ color: '#1b2430' });
-  for (const c of estiba.cajas) {
+  const piezas = [];
+  for (const c of [...estiba.cajas].sort((a, b) => a.orden - b.orden)) {
     if (c.orden > hastaOrden) continue;
     const mat = new THREE.MeshStandardMaterial({ color: c.sobrecargada ? '#d62828' : colorDe(c.codigo, colores) });
     const m = new THREE.Mesh(geo, mat);
@@ -80,14 +93,105 @@ export async function dibujar3D(contenedor, estiba, palet, colores, hastaOrden =
     const b = new THREE.LineSegments(bordes, lineaMat);
     b.scale.copy(m.scale); b.position.copy(m.position);
     escena.add(b);
+    piezas.push({ caja: c, malla: m, borde: b, y: m.position.y });
   }
-  const controls = Orbit ? new Orbit(camara, renderer.domElement) : null;
-  if (controls) { controls.target.copy(centro); controls.update(); }
-  else camara.lookAt(centro);
-  actual = { renderer, controls, frame: 0 };
-  const animar = () => { actual.frame = requestAnimationFrame(animar); controls?.update(); renderer.render(escena, camara); };
-  animar();
-  return true;
+  return { escena, centro, piezas };
+}
+
+// Formatos de video que acepta el equipo (MP4 primero: WhatsApp lo abre sin problema).
+export function formatoVideo() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  for (const t of ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']) {
+    if (MediaRecorder.isTypeSupported?.(t)) return t;
+  }
+  return null;
+}
+
+// Graba un video de cómo se arma la estiba, caja por caja, con el nombre del artículo.
+// opciones: { titulo, alAvanzar(fraccion) }. Devuelve { blob, extension, segundos }.
+export async function grabarVideo(estiba, palet, colores, { titulo = '', alAvanzar = () => {} } = {}) {
+  if (!(await cargarThree())) throw new Error('La vista 3D no está disponible en este equipo.');
+  const tipo = formatoVideo();
+  if (!tipo) throw new Error('Este equipo no permite grabar video desde la app.');
+  const W = 720, H = 960, HV = 780;            // video vertical para el celular; 3D arriba, letrero abajo
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, HV, false);
+  const { escena, centro, piezas } = armarEscena(estiba, palet, colores);
+  const camara = new THREE.PerspectiveCamera(40, W / HV, 0.01, 50);
+  const alturaM = Math.max(0.8, (palet.altoBase + (estiba.alturaTotal || 1200)) / 1000);
+  centro.y = alturaM / 2;
+  const radio = 2.4 + alturaM * 0.6;
+  piezas.forEach((p) => { p.malla.visible = false; p.borde.visible = false; });
+
+  const lienzo = document.createElement('canvas');
+  lienzo.width = W; lienzo.height = H;
+  const g = lienzo.getContext('2d');
+  const flujo = lienzo.captureStream(30);
+  const grabadora = new MediaRecorder(flujo, { mimeType: tipo, videoBitsPerSecond: 2_500_000 });
+  const trozos = [];
+  grabadora.ondataavailable = (e) => { if (e.data.size) trozos.push(e.data); };
+  const fin = new Promise((ok) => { grabadora.onstop = ok; });
+
+  const n = piezas.length;
+  const porCaja = Math.min(0.6, Math.max(0.12, 30 / Math.max(n, 1)));   // segundos por caja (máx. ~30 s armando)
+  const caida = Math.min(0.35, porCaja * 0.9);
+  const tArmado = n * porCaja + 0.5;
+  const total = 1 + tArmado + 3;                                        // 1 s inicio, armado, 3 s vuelta final
+  const pesoTotal = estiba.pesoTotal ?? piezas.reduce((t, p) => t + (p.caja.art?.peso || 0), 0);
+
+  const letrero = (visibles, actual) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, HV, W, H - HV);
+    g.fillStyle = '#1b2430'; g.font = 'bold 30px sans-serif';
+    g.fillText(`${titulo || 'Conformación de palet'}`.slice(0, 40), 24, HV + 44);
+    g.font = '26px sans-serif'; g.fillStyle = '#444';
+    g.fillText(`Caja ${visibles} de ${n} · ${Math.round(pesoTotal)} kg · ${Math.round(estiba.alturaTotal || 0)} mm`, 24, HV + 86);
+    if (actual) {
+      const c = actual.caja;
+      g.fillStyle = colorDe(c.codigo, colores); g.fillRect(24, HV + 108, 28, 28);
+      g.fillStyle = '#1b2430'; g.font = 'bold 24px sans-serif';
+      g.fillText(`${c.nombre || c.art?.nombre || c.codigo}`.slice(0, 42), 62, HV + 131);
+      g.font = '20px sans-serif'; g.fillStyle = '#666';
+      g.fillText(`Cód. ${c.codigo}${c.ubicacion ? ` · ubicación ${c.ubicacion}` : ''}${c.art?.peso ? ` · ${c.art.peso} kg` : ''}`.slice(0, 60), 62, HV + 160);
+    }
+    g.fillStyle = '#999'; g.font = '16px sans-serif';
+    g.fillText('Paletizado 3D · CEDI ATS R10 Valledupar', 24, H - 14);
+  };
+
+  grabadora.start(500);
+  const inicio = performance.now();
+  await new Promise((listo) => {
+    const paso = () => {
+      const t = (performance.now() - inicio) / 1000;
+      const ta = t - 1;                                                  // tiempo dentro del armado
+      let visibles = 0, actual = null;
+      for (let i = 0; i < n; i++) {
+        const p = piezas[i];
+        const t0 = i * porCaja;
+        if (ta < t0) { p.malla.visible = p.borde.visible = false; continue; }
+        visibles++; actual = p;
+        p.malla.visible = p.borde.visible = true;
+        const k = Math.min(1, (ta - t0) / caida);
+        const y = p.y + (1 - k * (2 - k)) * 0.5;                         // cae desde 50 cm y se asienta
+        p.malla.position.y = y; p.borde.position.y = y;
+      }
+      const ang = 0.6 + (t / total) * Math.PI * 1.2;
+      camara.position.set(centro.x + Math.cos(ang) * radio, centro.y + alturaM * 0.9 + 0.6, centro.z + Math.sin(ang) * radio);
+      camara.lookAt(centro);
+      renderer.render(escena, camara);
+      g.drawImage(renderer.domElement, 0, 0, W, HV);
+      letrero(visibles, actual);
+      alAvanzar(Math.min(1, t / total));
+      if (t < total) requestAnimationFrame(paso); else listo();
+    };
+    requestAnimationFrame(paso);
+  });
+  grabadora.stop();
+  await fin;
+  flujo.getTracks().forEach((x) => x.stop());
+  renderer.dispose();
+  const blob = new Blob(trozos, { type: tipo.split(';')[0] });
+  return { blob, extension: tipo.startsWith('video/mp4') ? 'mp4' : 'webm', segundos: Math.round(total) };
 }
 
 // Vista desde arriba de una capa (cajas cuya base está en z = nivel). Números = orden de armado.
