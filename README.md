@@ -7,10 +7,12 @@ App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la r
 - **APK de Android:** se compila sola en GitHub cada vez que se sube un cambio a `main`.
   Descarga: `https://github.com/luismendoza122/app-paletizado-3d/releases/latest/download/paletizado-3d.apk`
 
-## Qué hace (versión 0.1)
+## Qué hace (versión 0.2)
 | Pantalla | Para qué |
 |---|---|
-| Inicio | Cargar el Excel de la hoja "Ubicaciones CEDI" (UBICACIONES y PEDIDOS), ver el avance por zona, descargar la APK |
+| Inicio | Avance por zona, cargar la hoja "Ubicaciones CEDI" o pedidos (.xlsx / CSV), descargar la APK |
+| Tomar datos | Las 1.748 posiciones del CEDI ya cargadas. Por posición: artículo, código, A×B×H, peso, caja/bulto, líquido, delicado; marcar vacía; dividir en A y B. Si el código ya se tomó, autocompleta. Copiar los datos para la hoja |
+| Agente | Diagnóstico, siguiente paso, mejoras por pasillo, movimientos prioritarios y preguntas (sin internet) |
 | Ubicaciones | Cada posición con su artículo, clase BASE / MEDIO / TOPE y datos que faltan |
 | Reubicar | Propone el nuevo orden dentro de cada pasillo (BASE → MEDIO → TOPE), sin cambiar de zona. Exporta el plan de movimientos |
 | Pedidos | Arma cada pedido real en el orden de la ruta (1 o 2 estibas) con la ubicación actual y con la propuesta, y compara |

@@ -8,6 +8,8 @@ import { simularPedido } from './motor/simulacion.js';
 import { leerArchivo, aCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe } from './visor.js';
+import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, COLUMNAS, ZONAS } from './datos/layout.js';
+import { diagnostico, responder } from './agente.js';
 
 export const REPO = 'luismendoza122/app-paletizado-3d';
 const URL_APK = `https://github.com/${REPO}/releases/latest/download/paletizado-3d.apk`;
@@ -17,7 +19,7 @@ const PALET_EJEMPLO = { largo: 1200, ancho: 1000, altoBase: 150, tara: 25, carga
 const REGLAS_EJEMPLO = { soporteMinimo: 0.7, desviacionCGMax: 0.1 };
 
 const estado = {
-  filas: leer('ubicaciones', []),
+  filas: mezclar(generarLayout(), leer('ubicaciones', [])),
   pedidos: leer('pedidos', []),
   palet: leer('palet', PALET_EJEMPLO),
   reglas: leer('reglas', REGLAS_EJEMPLO),
@@ -33,7 +35,8 @@ const fmt = (n, d = 0) => (n === null || n === undefined || Number.isNaN(n) ? '�
 
 // ---------- Datos derivados ----------
 function recalcular() {
-  const ocupadas = estado.filas.filter((f) => String(f.ARTICULO ?? '').trim() || String(f.CODIGO_ARTICULO ?? '').trim());
+  // Solo cuentan las posiciones con artículo (las vacías y las divididas no cuentan).
+  const ocupadas = estado.filas.filter((f) => ['COMPLETA', 'INCOMPLETA'].includes(estadoDe(f)));
   const lineasPorCodigo = new Map();
   for (const p of estado.pedidos) {
     const c = String(p.CODIGO_ARTICULO ?? '').trim();
@@ -57,6 +60,15 @@ function recalcular() {
 
 function zonas() {
   return [...new Set(estado.filas.map((f) => f.SECCION).filter(Boolean))];
+}
+
+function guardarFilas() {
+  // Se guarda solo lo que tiene información (las posiciones sin revisar se regeneran del mapa).
+  guardar('ubicaciones', estado.filas.filter((f) => f.ESTADO !== 'SIN REVISAR' || f.SUBPOSICION));
+}
+
+function contexto() {
+  return { filas: estado.filas, posiciones: estado.posiciones, propuesta: estado.propuesta, pedidos: estado.pedidos, palet: estado.palet, paletConfirmado: estado.paletConfirmado };
 }
 
 function mapaActual() {
@@ -126,26 +138,28 @@ async function copiar(texto) {
 // ---------- Pantallas ----------
 const pantallas = {
   inicio() {
-    const total = estado.filas.length;
+    const total = estado.filas.filter((f) => f.ESTADO !== 'DIVIDIDA').length;
+    const revisadas = estado.filas.filter((f) => f.ESTADO !== 'DIVIDIDA' && estadoDe(f) !== 'SIN REVISAR').length;
     const ocupadas = estado.posiciones.length;
     const completas = estado.posiciones.filter((p) => !p.faltan.length).length;
     const pedidosUnicos = new Set(estado.pedidos.map((p) => p.PEDIDO)).size;
     const porZona = zonas().map((z) => {
       const pz = estado.posiciones.filter((p) => p.fila.SECCION === z);
-      return `<tr><td>${esc(z)}</td><td class="num">${fmt(estado.filas.filter((f) => f.SECCION === z).length)}</td><td class="num">${fmt(pz.length)}</td><td class="num">${fmt(pz.filter((p) => !p.faltan.length).length)}</td></tr>`;
+      return `<tr><td>${esc(z)}</td><td class="num">${fmt(estado.filas.filter((f) => f.SECCION === z && f.ESTADO !== 'DIVIDIDA').length)}</td><td class="num">${fmt(pz.length)}</td><td class="num">${fmt(pz.filter((p) => !p.faltan.length).length)}</td></tr>`;
     }).join('');
     return `
       ${estado.paletConfirmado ? '' : '<div class="aviso">Las medidas del palet (altura y peso máximos) son <b>de ejemplo</b>. Confírmalas con el CEDI en <b>Ajustes</b>.</div>'}
       <section class="tarjeta">
-        <h2>1. Cargar datos</h2>
-        <p class="nota">En la hoja "Ubicaciones CEDI": <b>Descargar como .xlsx</b> (trae UBICACIONES y PEDIDOS juntos) o como CSV por hoja. Luego elige el archivo aquí.</p>
+        <h2>1. Datos</h2>
+        <p class="nota">Los datos de cada posición se toman en la pestaña <b>Tomar datos</b>. También puedes cargar la hoja "Ubicaciones CEDI" (.xlsx o CSV): se mezcla con lo ya tomado, posición por posición. Los pedidos de prueba se cargan igual.</p>
+        <a class="boton" href="#" data-ir="tomar">Tomar datos</a> <a class="boton sec" href="#" data-ir="agente">Preguntar al agente</a>
         <input type="file" id="archivo" accept=".xlsx,.csv,.txt">
         <div id="resultadoImport"></div>
       </section>
       <section class="tarjeta">
         <h2>2. Estado</h2>
         <div class="cifras">
-          <div class="cifra"><b>${fmt(total)}</b><span>posiciones cargadas</span></div>
+          <div class="cifra"><b>${fmt(revisadas)} / ${fmt(total)}</b><span>posiciones revisadas</span></div>
           <div class="cifra"><b>${fmt(ocupadas)}</b><span>con artículo (las vacías no cuentan)</span></div>
           <div class="cifra"><b>${fmt(completas)}</b><span>con datos completos</span></div>
           <div class="cifra"><b>${fmt(pedidosUnicos)}</b><span>pedidos de prueba</span></div>
@@ -157,6 +171,62 @@ const pantallas = {
         <p class="nota">Descarga la APK de Android. Al instalarla, el celular puede pedir permiso para "instalar apps de origen desconocido".</p>
         <a class="boton" href="${URL_APK}">Descargar APK</a>
       </section>`}`;
+  },
+
+  tomar() {
+    const zona = estado.tomaZona || ZONAS[0].zona;
+    const pasillos = ZONAS.find((z) => z.zona === zona)?.pasillos || [];
+    const pas = pasillos.includes(estado.tomaPasillo) ? estado.tomaPasillo : pasillos[0];
+    const filtro = estado.tomaFiltro || 'todas';
+    const delPasillo = estado.filas.filter((f) => f.PASILLO === pas && f.ESTADO !== 'DIVIDIDA');
+    const revisadas = delPasillo.filter((f) => estadoDe(f) !== 'SIN REVISAR').length;
+    const lista = delPasillo.filter((f) => filtro === 'todas' || (filtro === 'pendientes' ? ['SIN REVISAR', 'INCOMPLETA'].includes(estadoDe(f)) : estadoDe(f) === 'COMPLETA'));
+    const etiqueta = { 'SIN REVISAR': 'sin', VACIA: 'vac', INCOMPLETA: 'inc', COMPLETA: 'ok' };
+    const filas = lista.map((f) => {
+      const e = estadoDe(f);
+      return `<button class="pos ${etiqueta[e]}" data-cod="${esc(f.CODIGO)}"><b>${esc(f.CODIGO)}</b><span>${e === 'VACIA' ? 'Vacía' : e === 'SIN REVISAR' ? 'Sin revisar' : esc(f.ARTICULO || f.CODIGO_ARTICULO || '')}${e === 'INCOMPLETA' ? ' · <i>faltan datos</i>' : ''}</span></button>`;
+    }).join('');
+    return `<section class="tarjeta">
+      <h2>Tomar datos por posición</h2>
+      <p class="nota">Recorre el pasillo en el orden de la ruta. Toca cada posición y registra el artículo que hay. Las vacías márcalas como vacías: no cuentan.</p>
+      <div class="fila">
+        <label>Zona<select id="tZona">${ZONAS.map((z) => `<option ${z.zona === zona ? 'selected' : ''}>${esc(z.zona)}</option>`).join('')}</select></label>
+        <label>Pasillo<select id="tPasillo">${pasillos.map((x) => `<option ${x === pas ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+        <label>Mostrar<select id="tFiltro"><option value="todas" ${filtro === 'todas' ? 'selected' : ''}>Todas</option><option value="pendientes" ${filtro === 'pendientes' ? 'selected' : ''}>Pendientes</option><option value="completas" ${filtro === 'completas' ? 'selected' : ''}>Completas</option></select></label>
+      </div>
+      <div class="barra-avance"><div style="width:${delPasillo.length ? Math.round((revisadas / delPasillo.length) * 100) : 0}%"></div></div>
+      <p class="nota">Pasillo ${esc(pas)}: ${revisadas} de ${delPasillo.length} revisadas.</p>
+      <div class="lista-pos">${filas || '<p class="nota">Nada que mostrar con este filtro.</p>'}</div>
+    </section>
+    <section class="tarjeta">
+      <h2>Pasar los datos a la hoja</h2>
+      <p class="nota">Copia todo lo tomado y pégalo en la hoja UBICACIONES (o guárdalo como respaldo).</p>
+      <button class="boton sec" id="copiarToma">Copiar datos tomados</button><button class="boton sec" id="descargarToma">Descargar CSV</button>
+    </section>`;
+  },
+
+  agente() {
+    const d = diagnostico(contexto());
+    const chat = (estado.chat || []).map((m) => `<div class="msg ${m.de}">${m.texto.map((l) => `<p>${esc(l)}</p>`).join('')}</div>`).join('');
+    return `<section class="tarjeta">
+      <h2>Agente Paletizado</h2>
+      <p class="nota">Revisa los datos tomados, propone mejoras y movimientos y responde preguntas. Funciona sin internet con las reglas del proyecto.</p>
+      <div class="cifras">
+        <div class="cifra"><b>${d.av.revisadas} / ${d.av.total}</b><span>posiciones revisadas</span></div>
+        <div class="cifra"><b>${d.av.COMPLETA}</b><span>completas</span></div>
+        <div class="cifra"><b>${d.av.INCOMPLETA}</b><span>con datos a medias</span></div>
+        <div class="cifra"><b>${d.av.VACIA}</b><span>vacías (no cuentan)</span></div>
+      </div>
+      <div class="aviso ok"><b>Siguiente paso:</b> ${esc(d.siguiente)}</div>
+      ${d.mejoras.length ? `<h3>Mejoras sugeridas</h3><ol class="mejoras">${d.mejoras.map((m) => `<li>${esc(m.texto)}</li>`).join('')}</ol>` : ''}
+    </section>
+    <section class="tarjeta">
+      <h2>Pregúntale al agente</h2>
+      <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Cómo tomo las medidas?', '¿Qué significa BASE, MEDIO y TOPE?']
+        .map((q) => `<button class="boton sec" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+      <div class="chat" id="chat">${chat || '<p class="nota">Ejemplos: "¿cómo voy en el pasillo 12?", "¿dónde va el aceite?", "¿qué movimientos hago en alimentos?"</p>'}</div>
+      <form id="formChat" class="fila"><label>Tu pregunta<input id="pregunta" autocomplete="off" placeholder="Escribe aquí…"></label><button class="boton">Preguntar</button></form>
+    </section>`;
   },
 
   ubicaciones() {
@@ -358,6 +428,123 @@ function simularTodos() {
   $('#copiarPrueba').addEventListener('click', () => copiar(csv()));
 }
 
+
+// ---------- Formulario de una posición ----------
+function abrirFormulario(codigo) {
+  const f = estado.filas.find((x) => x.CODIGO === codigo);
+  if (!f) return;
+  const cat = catalogo(estado.filas);
+  const v = (k) => esc(f[k] ?? '');
+  const opc = (k, valores) => valores.map((x) => `<button type="button" class="opcion ${String(f[k] ?? '').toUpperCase() === x ? 'sel' : ''}" data-campo="${k}" data-valor="${x}">${x === 'SI' ? 'SÍ' : x}</button>`).join('');
+  const fondo = document.createElement('div');
+  fondo.className = 'dialogo';
+  fondo.innerHTML = `<form class="caja formulario" id="formPos">
+    <h2>${esc(f.CODIGO)} <small>${esc(f.SECCION)} · ruta ${esc(f.SECUENCIA_RUTA)}</small></h2>
+    <datalist id="listaArt">${[...cat.values()].map((a) => `<option value="${esc(a.CODIGO_ARTICULO)}">${esc(a.ARTICULO)}</option>`).join('')}</datalist>
+    <label>Código del artículo<input name="CODIGO_ARTICULO" list="listaArt" inputmode="numeric" value="${v('CODIGO_ARTICULO')}" autocomplete="off"></label>
+    <label>Artículo<input name="ARTICULO" value="${v('ARTICULO')}" autocomplete="off"></label>
+    <div class="fila">
+      <label>Largo A (mm)<input name="LARGO_A_MM" type="number" inputmode="numeric" value="${v('LARGO_A_MM')}"></label>
+      <label>Ancho B (mm)<input name="ANCHO_B_MM" type="number" inputmode="numeric" value="${v('ANCHO_B_MM')}"></label>
+      <label>Alto H (mm)<input name="ALTO_H_MM" type="number" inputmode="numeric" value="${v('ALTO_H_MM')}"></label>
+      <label>Peso (kg)<input name="PESO_KG" type="number" inputmode="decimal" step="0.1" value="${v('PESO_KG')}"></label>
+    </div>
+    <div class="grupo"><span>Empaque</span>${opc('EMPAQUE', ['CAJA', 'BULTO'])}</div>
+    <div class="grupo"><span>Líquido</span>${opc('LIQUIDO', ['NO', 'SI'])}</div>
+    <div class="grupo"><span>Delicado</span>${opc('DELICADO', ['NO', 'SI'])}</div>
+    <details><summary>Más datos (opcional)</summary>
+      <div class="fila">
+        <label>Cajas que aguanta encima<input name="MAX_CAJAS_ENCIMA" type="number" inputmode="numeric" value="${v('MAX_CAJAS_ENCIMA')}"></label>
+        <label>Nivel<input name="NIVEL" value="${v('NIVEL')}"></label>
+        <label>Hueco ancho (mm)<input name="HUECO_ANCHO_MM" type="number" inputmode="numeric" value="${v('HUECO_ANCHO_MM')}"></label>
+        <label>Hueco fondo (mm)<input name="HUECO_FONDO_MM" type="number" inputmode="numeric" value="${v('HUECO_FONDO_MM')}"></label>
+        <label>Hueco alto (mm)<input name="HUECO_ALTO_MM" type="number" inputmode="numeric" value="${v('HUECO_ALTO_MM')}"></label>
+        <label>Peso máx. del nivel (kg)<input name="PESO_MAX_KG" type="number" inputmode="decimal" value="${v('PESO_MAX_KG')}"></label>
+      </div>
+      <div class="grupo"><span>Bloqueada (no se mueve)</span>${opc('BLOQUEADA', ['NO', 'SI'])}</div>
+      <label>Observaciones<input name="OBSERVACIONES" value="${v('OBSERVACIONES')}"></label>
+    </details>
+    <div id="avisosPos"></div>
+    <div class="acciones">
+      <button class="boton" type="submit" id="guardarPos">Guardar y siguiente</button>
+      <button class="boton sec" type="button" id="vaciaPos">Marcar vacía</button>
+      ${f.SUBPOSICION ? '' : '<button class="boton sec" type="button" id="dividirPos">Dividir en A y B</button>'}
+      <button class="boton sec" type="button" id="cerrarPos">Cerrar</button>
+    </div>
+  </form>`;
+  document.body.appendChild(fondo);
+  const form = fondo.querySelector('form');
+  const elegidos = {};
+  ['EMPAQUE', 'LIQUIDO', 'DELICADO', 'BLOQUEADA'].forEach((k) => { elegidos[k] = String(f[k] ?? '').toUpperCase() || (k === 'BLOQUEADA' ? 'NO' : ''); });
+  form.querySelectorAll('.opcion').forEach((b) => b.addEventListener('click', () => {
+    elegidos[b.dataset.campo] = b.dataset.valor;
+    form.querySelectorAll(`.opcion[data-campo="${b.dataset.campo}"]`).forEach((x) => x.classList.toggle('sel', x === b));
+  }));
+  // Autocompletar si el código ya se tomó en otra posición
+  form.CODIGO_ARTICULO.addEventListener('change', () => {
+    const a = cat.get(form.CODIGO_ARTICULO.value.trim());
+    if (!a) return;
+    for (const [k, val] of Object.entries(a)) {
+      if (form[k] && form[k].tagName === 'INPUT') form[k].value = val;
+      if (k in elegidos && val) {
+        elegidos[k] = String(val).toUpperCase();
+        form.querySelectorAll(`.opcion[data-campo="${k}"]`).forEach((x) => x.classList.toggle('sel', x.dataset.valor === elegidos[k]));
+      }
+    }
+    notificar('Datos del artículo copiados de otra posición');
+  });
+  const cerrar = () => fondo.remove();
+  let avisado = false;
+  const siguiente = () => {
+    const lista = estado.filas.filter((x) => x.PASILLO === f.PASILLO && x.ESTADO !== 'DIVIDIDA');
+    const i = lista.findIndex((x) => x.CODIGO === f.CODIGO);
+    return lista.slice(i + 1).find((x) => ['SIN REVISAR', 'INCOMPLETA'].includes(estadoDe(x)));
+  };
+  const terminar = () => {
+    guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
+    const sig = siguiente();
+    if (sig) abrirFormulario(sig.CODIGO); else notificar('Pasillo terminado');
+  };
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const datos = Object.fromEntries([...new FormData(form).entries()].map(([k, val]) => [k, String(val).trim()]));
+    Object.assign(datos, elegidos);
+    const avisos = revisarDatos(datos);
+    if (avisos.length && !avisado) {
+      avisado = true;
+      $('#avisosPos', fondo).innerHTML = `<div class="aviso">${avisos.map(esc).join('<br>')}<br><b>Corrige o toca Guardar otra vez.</b></div>`;
+      return;
+    }
+    if (Number(datos.ANCHO_B_MM) > Number(datos.LARGO_A_MM) && Number(datos.LARGO_A_MM) > 0) [datos.LARGO_A_MM, datos.ANCHO_B_MM] = [datos.ANCHO_B_MM, datos.LARGO_A_MM];
+    Object.assign(f, datos, { ACTUALIZADO: new Date().toISOString() });
+    f.ESTADO = estadoDe({ ...f, ESTADO: '' });
+    terminar();
+  });
+  $('#vaciaPos', fondo).addEventListener('click', () => {
+    for (const k of ['ARTICULO', 'CODIGO_ARTICULO', 'LARGO_A_MM', 'ANCHO_B_MM', 'ALTO_H_MM', 'PESO_KG', 'EMPAQUE', 'LIQUIDO', 'DELICADO', 'MAX_CAJAS_ENCIMA']) delete f[k];
+    f.ESTADO = 'VACIA'; f.ACTUALIZADO = new Date().toISOString();
+    terminar();
+  });
+  $('#dividirPos', fondo)?.addEventListener('click', () => {
+    estado.filas = subdividir(estado.filas, f.CODIGO);
+    guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
+    abrirFormulario(`${f.CODIGO}A`);
+  });
+  $('#cerrarPos', fondo).addEventListener('click', cerrar);
+}
+
+function csvToma() {
+  const tomadas = estado.filas.filter((f) => estadoDe(f) !== 'SIN REVISAR' || f.SUBPOSICION);
+  return aCSV(tomadas.map((f) => ({ ...f, ESTADO: f.ESTADO === 'DIVIDIDA' ? 'DIVIDIDA' : estadoDe(f) })), COLUMNAS.map((c) => [c, c]));
+}
+
+function preguntar(texto) {
+  if (!texto.trim()) return;
+  estado.chat = [...(estado.chat || []), { de: 'yo', texto: [texto] }, { de: 'agente', texto: responder(texto, contexto()) }].slice(-20);
+  mostrar('agente');
+  const c = $('#chat'); if (c) c.lastElementChild?.scrollIntoView({ block: 'nearest' });
+}
+
 // ---------- Navegación y eventos ----------
 let pestanaActual = 'inicio';
 function mostrar(tab) {
@@ -379,7 +566,7 @@ function conectar(tab) {
       try {
         const r = await leerArchivo(archivo);
         const partes = [];
-        if (r.ubicaciones) { estado.filas = r.ubicaciones; guardar('ubicaciones', r.ubicaciones); partes.push(`${r.ubicaciones.length} ubicaciones`); }
+        if (r.ubicaciones) { estado.filas = mezclar(estado.filas, r.ubicaciones); guardarFilas(); partes.push(`${r.ubicaciones.length} ubicaciones`); }
         if (r.pedidos) { estado.pedidos = r.pedidos; guardar('pedidos', r.pedidos); partes.push(`${r.pedidos.length} líneas de pedidos`); }
         recalcular();
         mostrar('inicio');
@@ -388,6 +575,21 @@ function conectar(tab) {
         salida.innerHTML = `<div class="aviso error">No se pudo leer el archivo: ${esc(err.message)}</div>`;
       }
     });
+  }
+  if (tab === 'tomar') {
+    $('#tZona').addEventListener('change', (e) => { estado.tomaZona = e.target.value; estado.tomaPasillo = ''; mostrar('tomar'); });
+    $('#tPasillo').addEventListener('change', (e) => { estado.tomaPasillo = e.target.value; mostrar('tomar'); });
+    $('#tFiltro').addEventListener('change', (e) => { estado.tomaFiltro = e.target.value; mostrar('tomar'); });
+    document.querySelectorAll('.pos').forEach((b) => b.addEventListener('click', () => {
+      estado.tomaPasillo = estado.filas.find((x) => x.CODIGO === b.dataset.cod)?.PASILLO;
+      abrirFormulario(b.dataset.cod);
+    }));
+    $('#copiarToma').addEventListener('click', () => copiar(csvToma()));
+    $('#descargarToma').addEventListener('click', () => descargar('ubicaciones-tomadas.csv', csvToma()));
+  }
+  if (tab === 'agente') {
+    document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => preguntar(b.dataset.q)));
+    $('#formChat').addEventListener('submit', (e) => { e.preventDefault(); preguntar($('#pregunta').value); });
   }
   if (tab === 'ubicaciones') {
     $('#fZona').addEventListener('change', (e) => { estado.filtroZona = e.target.value; estado.filtroPasillo = ''; mostrar('ubicaciones'); });
@@ -451,9 +653,9 @@ function conectar(tab) {
       notificar('Guardado');
     });
     $('#borrar').addEventListener('click', async () => {
-      if (!(await confirmar('¿Borrar las ubicaciones y pedidos cargados en este equipo?'))) return;
+      if (!(await confirmar('¿Borrar todos los datos tomados y los pedidos de este equipo? Primero cópialos a la hoja si los necesitas.'))) return;
       borrarTodo();
-      estado.filas = []; estado.pedidos = []; estado.paletConfirmado = false; estado.palet = PALET_EJEMPLO;
+      estado.filas = generarLayout(); estado.pedidos = []; estado.paletConfirmado = false; estado.palet = PALET_EJEMPLO;
       recalcular(); mostrar('inicio');
     });
   }
