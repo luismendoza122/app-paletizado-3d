@@ -41,7 +41,8 @@ jobs:
               lb = openpyxl.load_workbook(f)
               print(f, [(h, lb[h].max_row, [c.value for c in lb[h][1]][:6]) for h in lb.sheetnames])
           PYX
-          for v in salida/*.mp4 salida/*.webm; do [ -f "$v" ] && ffprobe -v error -show_entries format=duration,size:stream=codec_name,width,height -of compact "$v"; done; true
+          ls -la salida/*.mp4 salida/*.webm 2>/dev/null || echo "sin video"
+          echo "CUADRO-INICIO"; base64 -w0 salida/cuadro-video.png 2>/dev/null; echo; echo "CUADRO-FIN"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
