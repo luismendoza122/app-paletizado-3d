@@ -1,6 +1,6 @@
 {
   "name": "app-paletizado-3d",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Conformación de palets en 3D y reubicación de artículos por pasillo – CEDI ATS R10 Valledupar",

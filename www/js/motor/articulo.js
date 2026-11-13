@@ -2,6 +2,9 @@
 // Medidas en milímetros enteros y peso en kg.
 
 const SI = (v) => String(v ?? '').trim().toUpperCase().startsWith('S');
+// Valor para los datos que no aplican a un artículo (se escribe en el formulario o en Excel).
+export const NO_APLICA = 'NO APLICA';
+export const noAplica = (v) => String(v ?? '').trim().toUpperCase().replace(/[\/.]/g, '') === 'NO APLICA' || String(v ?? '').trim().toUpperCase() === 'N/A';
 
 export function numero(v) {
   if (v === null || v === undefined || v === '') return null;
@@ -18,19 +21,20 @@ export function articuloDesdeFila(f) {
   const faltan = [];
   if (!String(f.ARTICULO ?? '').trim()) faltan.push('artículo');
   if (!String(f.CODIGO_ARTICULO ?? '').trim()) faltan.push('código');
-  if (!largo) faltan.push('largo A');
-  if (!ancho) faltan.push('ancho B');
-  if (!alto) faltan.push('alto H');
-  if (!peso) faltan.push('peso');
+  // Medidas o peso "no aplica": la posición queda completa, pero sin medidas no entra al cálculo del palet.
+  for (const [k, v, t] of [['LARGO_A_MM', largo, 'largo A'], ['ANCHO_B_MM', ancho, 'ancho B'], ['ALTO_H_MM', alto, 'alto H'], ['PESO_KG', peso, 'peso']]) {
+    if (noAplica(f[k])) faltan.push(`${t} (no aplica)`);
+    else if (!v) faltan.push(t);
+  }
   if (!String(f.EMPAQUE ?? '').trim()) faltan.push('empaque');
   if (!String(f.LIQUIDO ?? '').trim()) faltan.push('líquido');
   if (!String(f.DELICADO ?? '').trim()) faltan.push('delicado');
 
-  const empaque = String(f.EMPAQUE ?? 'CAJA').trim().toUpperCase() === 'BULTO' ? 'BULTO' : 'CAJA';
+  const empaque = String(f.EMPAQUE ?? 'CAJA').trim().toUpperCase() === 'BULTO' ? 'BULTO' : 'CAJA';   // "no aplica" → caja
   const liquido = SI(f.LIQUIDO);
   const delicado = SI(f.DELICADO);
   const articulo = {
-    codigo: String(f.CODIGO_ARTICULO ?? '').trim(),
+    codigo: noAplica(f.CODIGO_ARTICULO) ? `SIN-CODIGO-${f.CODIGO}` : String(f.CODIGO_ARTICULO ?? '').trim(),
     nombre: String(f.ARTICULO ?? '').trim(),
     largo: Math.round(largo || 0),
     ancho: Math.round(ancho || 0),

@@ -145,7 +145,7 @@ export function catalogo(filas) {
   const m = new Map();
   for (const f of filas) {
     const cod = String(f.CODIGO_ARTICULO ?? '').trim();
-    if (!cod || estadoDe(f) !== 'COMPLETA') continue;
+    if (!cod || cod.toUpperCase() === 'NO APLICA' || estadoDe(f) !== 'COMPLETA') continue;
     m.set(cod, Object.fromEntries(CAMPOS_ARTICULO.map((k) => [k, f[k] ?? ''])));
   }
   return m;

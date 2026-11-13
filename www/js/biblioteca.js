@@ -24,10 +24,13 @@ export const BIBLIOTECA = [
     'En la ruta quedan en este orden: x1, x2, x3, y1, y2, y3, z1, z2, z3. Se comparten con todos por la nube.',
     'Una posición agregada que no se llena (o se marca vacía) no cuenta en el avance.'] },
   { tema: 'Tomar datos', titulo: 'Borrar una posición agregada', claves: ['borrar', 'eliminar', 'quitar posicion', 'borrar posicion', 'me equivoque'], texto: [
-    'Abre la posición agregada (x3, y1…z3) y toca "Borrar". Si estaba dividida en A y B se borra completa. x1 y x2 son fijas y no se pueden borrar.',
+    'Abre la posición agregada (x3, y1…z3) y toca "Borrar". x1 y x2 son fijas y no se pueden borrar.',
     'Si tenía datos, la app pregunta antes. El borrado llega a los demás celulares; si otra persona ya la había llenado, no se borra y queda su dato.'] },
-  { tema: 'Tomar datos', titulo: 'Dividir una posición en A y B', claves: ['dividir', 'a y b', 'mitad', 'dos articulos', 'subposicion'], texto: [
-    'Cuando en una posición hay dos artículos, toca "Dividir en A y B". La posición madre queda DIVIDIDA y no recibe artículo; si ya tenía datos, pasan a la A. En la ruta, A va antes que B.'] },
+  { tema: 'Tomar datos', titulo: 'Dato que no aplica', claves: ['no aplica', 'n/a', 'na', 'no corresponde', 'no tiene', 'sin dato'], texto: [
+    'Si un dato no corresponde al artículo, toca "No aplica": en Código, Largo, Alto, Ancho y Peso hay un botón al lado del nombre; en Empaque, Líquido y Delicado es la tercera opción. La posición queda completa.',
+    'Si no aplican las medidas o el peso, el artículo no entra al cálculo del palet (sin medidas no se puede acomodar). Empaque "no aplica" se calcula como caja; líquido y delicado "no aplica", como NO. En Excel se escribe NO APLICA o N/A.'] },
+  { tema: 'Tomar datos', titulo: 'Dos artículos en una posición', claves: ['dividir', 'a y b', 'mitad', 'dos articulos', 'subposicion'], texto: [
+    'Ya no se divide en A y B. Si el módulo tiene más espacios, agrégale posiciones (x3, y1…z3) y pon cada artículo en la suya.'] },
   { tema: 'Tomar datos', titulo: 'Posición vacía', claves: ['vacia', 'sin articulo', 'no hay producto', 'no cuenta'], texto: [
     'Si no hay artículo en la posición, toca "Marcar vacía". Las vacías no cuentan en los datos, en los indicadores ni en el cálculo.'] },
   { tema: 'Tomar datos', titulo: 'Autocompletar un artículo repetido', claves: ['autocompletar', 'repetido', 'mismo articulo', 'llena solo'], texto: [
@@ -77,7 +80,7 @@ export const BIBLIOTECA = [
     'Seco no alimentos: 05 al 11. Seco alimentos: 12 al 19. Lácteos: LA52, LA53, LA54. Temperado: TE62, TE63. Fruver: FV42. Congelado: CO31, CO32. Pilas y canastillas no son ubicaciones de artículos.',
     'Alimentos y no alimentos nunca van en el mismo palet.'] },
   { tema: 'CEDI', titulo: 'Módulos y códigos de ubicación', claves: ['modulo', 'codigo de ubicacion', '001', 'multiplos de 3', 'x1', 'x2', 'cuantas posiciones'], texto: [
-    'Cada pasillo tiene módulos 001 a 056 sin los múltiplos de 3 (38 módulos). Cada módulo tiene fijas x1 y x2 y se le pueden agregar x3, y1–y3, z1–z3. Código: PASILLO-MODULOPOSICION (ej. 05-004x1; si se divide, 05-004x1A).',
+    'Cada pasillo tiene módulos 001 a 056 sin los múltiplos de 3 (38 módulos). Cada módulo tiene fijas x1 y x2 y se le pueden agregar x3, y1–y3, z1–z3. Código: PASILLO-MODULOPOSICION (ej. 05-004x1, 05-004y2).',
     'Con x1 y x2 son 76 posiciones por pasillo y 1.748 en total.'] },
   { tema: 'CEDI', titulo: 'Ruta de picking', claves: ['ruta', 'recorrido', 'orden', 'secuencia', 'picking'], texto: [
     'Se entra a cada pasillo por el 001 hacia el 056, de lado a lado (001x1, 001x2, 002x1…). La secuencia empieza en 1 en cada zona. Lo primero que se recoge queda abajo en el palet; lo último, arriba.',

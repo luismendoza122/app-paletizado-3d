@@ -10,7 +10,7 @@ import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
 import { BIBLIOTECA } from './biblioteca.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
-import { generarLayout, mezclar, estadoDe, subdividir, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
+import { generarLayout, mezclar, estadoDe, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
 import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
@@ -92,7 +92,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.6.0';
+const VERSION_APP = '0.7.0';
 function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -700,25 +700,28 @@ function abrirFormulario(codigo) {
   const v = (k) => esc(f[k] ?? '');
   let unidad = leer('unidad', 'mm');
   const med = (k) => esc(desdeMilimetros(f[k], unidad));
-  const opc = (k, valores) => valores.map((x) => `<button type="button" class="opcion ${String(f[k] ?? '').toUpperCase() === x ? 'sel' : ''}" data-campo="${k}" data-valor="${x}">${x === 'SI' ? 'SÍ' : x}</button>`).join('');
+  const opc = (k, valores) => valores.map((x) => `<button type="button" class="opcion ${String(f[k] ?? '').toUpperCase() === x ? 'sel' : ''}" data-campo="${k}" data-valor="${x}">${x === 'SI' ? 'SÍ' : x === 'NO APLICA' ? 'No aplica' : x}</button>`).join('');
+  const esNA = (k) => String(f[k] ?? '').trim().toUpperCase() === 'NO APLICA';
+  const na = (k) => `<button type="button" class="na${esNA(k) ? ' sel' : ''}" data-na="${k}">No aplica</button>`;
   const fondo = document.createElement('div');
   fondo.className = 'dialogo';
   fondo.innerHTML = `<form class="caja formulario" id="formPos">
     <h2>${esc(f.CODIGO)} <small>${esc(f.SECCION)} · ruta ${esc(f.SECUENCIA_RUTA)}</small></h2>
     ${f._por && f._por !== miNombre() && ['COMPLETA', 'INCOMPLETA', 'VACIA'].includes(estadoDe(f)) ? `<div class="aviso">⚠ Esta posición ya fue parametrizada por <b>${esc(f._por)}</b>${f._en ? ` el ${esc(new Date(f._en).toLocaleString('es-CO'))}` : ''}. Puedes editarla: tu cambio reemplaza el anterior y queda en el historial.</div>` : ''}
     <datalist id="listaArt">${[...cat.values()].map((a) => `<option value="${esc(a.CODIGO_ARTICULO)}">${esc(a.ARTICULO)}</option>`).join('')}</datalist>
-    <label>Código del artículo<input name="CODIGO_ARTICULO" list="listaArt" inputmode="numeric" value="${v('CODIGO_ARTICULO')}" autocomplete="off"></label>
+    <label>Código del artículo ${na('CODIGO_ARTICULO')}<input name="CODIGO_ARTICULO" list="listaArt" inputmode="numeric" value="${esNA('CODIGO_ARTICULO') ? '' : v('CODIGO_ARTICULO')}" autocomplete="off"${esNA('CODIGO_ARTICULO') ? ' disabled' : ''}></label>
     <label>Artículo<input name="ARTICULO" value="${v('ARTICULO')}" autocomplete="off"></label>
     <div class="grupo"><span>Medidas en</span>${['mm', 'cm', 'm'].map((x) => `<button type="button" class="opcion unidad ${x === unidad ? 'sel' : ''}" data-unidad="${x}">${x}</button>`).join('')}</div>
     <div class="fila">
-      <label>Largo A (<span class="u">${unidad}</span>)<input name="LARGO_A_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('LARGO_A_MM')}"></label>
-      <label>Ancho B (<span class="u">${unidad}</span>)<input name="ANCHO_B_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ANCHO_B_MM')}"></label>
-      <label>Alto H (<span class="u">${unidad}</span>)<input name="ALTO_H_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ALTO_H_MM')}"></label>
-      <label>Peso (kg)<input name="PESO_KG" type="number" inputmode="decimal" step="0.1" value="${v('PESO_KG')}"></label>
+      <label>Largo A (<span class="u">${unidad}</span>) ${na('LARGO_A_MM')}<input name="LARGO_A_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('LARGO_A_MM')}"${esNA('LARGO_A_MM') ? ' disabled' : ''}></label>
+      <label>Ancho B (<span class="u">${unidad}</span>) ${na('ANCHO_B_MM')}<input name="ANCHO_B_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ANCHO_B_MM')}"${esNA('ANCHO_B_MM') ? ' disabled' : ''}></label>
+      <label>Alto H (<span class="u">${unidad}</span>) ${na('ALTO_H_MM')}<input name="ALTO_H_MM" type="number" inputmode="decimal" step="any" data-medida value="${med('ALTO_H_MM')}"${esNA('ALTO_H_MM') ? ' disabled' : ''}></label>
+      <label>Peso (kg) ${na('PESO_KG')}<input name="PESO_KG" type="number" inputmode="decimal" step="0.1" value="${esNA('PESO_KG') ? '' : v('PESO_KG')}"${esNA('PESO_KG') ? ' disabled' : ''}></label>
     </div>
-    <div class="grupo"><span>Empaque</span>${opc('EMPAQUE', ['CAJA', 'BULTO'])}</div>
-    <div class="grupo"><span>Líquido</span>${opc('LIQUIDO', ['NO', 'SI'])}</div>
-    <div class="grupo"><span>Delicado</span>${opc('DELICADO', ['NO', 'SI'])}</div>
+    <div class="grupo"><span>Empaque</span>${opc('EMPAQUE', ['CAJA', 'BULTO', 'NO APLICA'])}</div>
+    <div class="grupo"><span>Líquido</span>${opc('LIQUIDO', ['NO', 'SI', 'NO APLICA'])}</div>
+    <div class="grupo"><span>Delicado</span>${opc('DELICADO', ['NO', 'SI', 'NO APLICA'])}</div>
+    <p class="nota">"No aplica": el dato no corresponde a este artículo. La posición queda completa; si no aplican las medidas o el peso, no entra al cálculo del palet.</p>
     <details><summary>Más datos (opcional)</summary>
       <div class="fila">
         <label>Cajas que aguanta encima<input name="MAX_CAJAS_ENCIMA" type="number" inputmode="numeric" value="${v('MAX_CAJAS_ENCIMA')}"></label>
@@ -743,7 +746,6 @@ function abrirFormulario(codigo) {
     <div class="acciones">
       <button class="boton" type="submit" id="guardarPos">Guardar y siguiente</button>
       <button class="boton sec" type="button" id="vaciaPos">Marcar vacía</button>
-      ${f.SUBPOSICION ? '' : '<button class="boton sec" type="button" id="dividirPos">Dividir en A y B</button>'}
       ${esAgregada(f) ? `<button class="boton peligro" type="button" id="borrarPos">Borrar ${esc(f.SUBPOSICION ? f.CODIGO.slice(0, -1) : f.CODIGO)}</button>` : ''}
       <button class="boton sec" type="button" id="cerrarPos">Cerrar</button>
     </div>
@@ -766,11 +768,23 @@ function abrirFormulario(codigo) {
     elegidos[b.dataset.campo] = b.dataset.valor;
     form.querySelectorAll(`.opcion[data-campo="${b.dataset.campo}"]`).forEach((x) => x.classList.toggle('sel', x === b));
   }));
+  // "No aplica" en un campo: se apaga la casilla y se guarda NO APLICA
+  form.querySelectorAll('[data-na]').forEach((b) => b.addEventListener('click', (e) => {
+    e.preventDefault();
+    const input = form[b.dataset.na];
+    const activo = !b.classList.contains('sel');
+    b.classList.toggle('sel', activo);
+    input.disabled = activo;
+    if (activo) input.value = '';
+    else input.focus();
+  }));
   // Autocompletar si el código ya se tomó en otra posición
   form.CODIGO_ARTICULO.addEventListener('change', () => {
     const a = cat.get(form.CODIGO_ARTICULO.value.trim());
     if (!a) return;
     for (const [k, val] of Object.entries(a)) {
+      const naBtn = form.querySelector(`[data-na="${k}"]`);
+      if (naBtn) { const esNa = String(val).toUpperCase() === 'NO APLICA'; naBtn.classList.toggle('sel', esNa); form[k].disabled = esNa; if (esNa) { form[k].value = ''; continue; } }
       if (form[k] && form[k].tagName === 'INPUT') form[k].value = form[k].dataset.medida !== undefined ? (desdeMilimetros(val, unidad) || val) : val;
       if (k in elegidos && val) {
         elegidos[k] = String(val).toUpperCase();
@@ -799,6 +813,7 @@ function abrirFormulario(codigo) {
     form.querySelectorAll('[data-medida]').forEach((i) => {
       datos[i.name] = aMilimetros(i.value, unidad);
     });
+    form.querySelectorAll('[data-na].sel').forEach((b) => { datos[b.dataset.na] = 'NO APLICA'; });
     const avisos = revisarDatos(datos);
     if (avisos.length && !avisado) {
       avisado = true;
@@ -814,12 +829,6 @@ function abrirFormulario(codigo) {
     for (const k of ['ARTICULO', 'CODIGO_ARTICULO', 'LARGO_A_MM', 'ANCHO_B_MM', 'ALTO_H_MM', 'PESO_KG', 'EMPAQUE', 'LIQUIDO', 'DELICADO', 'MAX_CAJAS_ENCIMA']) delete f[k];
     f.ESTADO = 'VACIA'; f.ACTUALIZADO = new Date().toISOString(); f._pendiente = true;
     terminar();
-  });
-  $('#dividirPos', fondo)?.addEventListener('click', () => {
-    estado.filas = subdividir(estado.filas, f.CODIGO);
-    estado.filas.filter((x) => x.CODIGO.startsWith(f.CODIGO)).forEach((x) => { x._pendiente = true; });
-    guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
-    abrirFormulario(`${f.CODIGO}A`);
   });
   // Borrar una posición agregada (x1 y x2 son fijas)
   $('#borrarPos', fondo)?.addEventListener('click', async () => {

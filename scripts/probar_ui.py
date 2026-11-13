@@ -31,6 +31,19 @@ with sync_playwright() as p:
     assert '05-001z3' in cods and '05-001y2' in cods
     pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
     print('formulario y1:', pg.locator('form').last.inner_text()[:50].replace(chr(10),' '))
+    print('sin dividir A y B:', pg.locator('#dividirPos').count() == 0)
+    # Llenar y1 con "No aplica" en el peso y en líquido
+    pg.fill('[name=CODIGO_ARTICULO]', '9001'); pg.fill('[name=ARTICULO]', 'EXHIBIDOR PRUEBA')
+    pg.fill('[name=LARGO_A_MM]', '400'); pg.fill('[name=ANCHO_B_MM]', '300'); pg.fill('[name=ALTO_H_MM]', '200')
+    pg.click('[data-na="PESO_KG"]'); pg.click('[data-campo="EMPAQUE"][data-valor="CAJA"]')
+    pg.click('[data-campo="LIQUIDO"][data-valor="NO APLICA"]'); pg.click('[data-campo="DELICADO"][data-valor="NO"]')
+    pg.click('#guardarPos'); pg.wait_for_timeout(500)
+    if pg.locator('#guardarPos').count() and pg.locator('#avisosPos').inner_text().strip(): pg.click('#guardarPos'); pg.wait_for_timeout(400)
+    y1 = pg.evaluate("JSON.parse(localStorage.getItem('paletizado3d:ubicaciones')).find(f=>f.CODIGO==='05-001y1')")
+    print('y1 con no aplica:', {k: y1.get(k) for k in ['PESO_KG','LIQUIDO','ESTADO']}); assert y1['PESO_KG'] == 'NO APLICA' and y1['LIQUIDO'] == 'NO APLICA'
+    pg.locator('#cerrarPos').click() if pg.locator('#cerrarPos').count() else None; pg.wait_for_timeout(200)
+    pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
+    print('peso deshabilitado al reabrir:', pg.is_disabled('[name=PESO_KG]'))
     pg.click('#borrarPos'); pg.wait_for_timeout(400)
     cods = pg.evaluate("JSON.parse(localStorage.getItem('paletizado3d:ubicaciones')).map(f=>f.CODIGO).filter(c=>c.startsWith('05-001'))")
     print('despues de borrar y1:', cods); assert '05-001y1' not in cods and '05-001y2' in cods

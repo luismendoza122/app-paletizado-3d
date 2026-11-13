@@ -88,3 +88,6 @@ label.chk input { min-height: 0; width: 22px; height: 22px; }
 .toast.error { background: var(--rojo); }
 .toast.ok { background: var(--azul); border: 0; }
 .video-palet { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; margin: 8px 0; }
+.na { float: right; min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--borde); background: #fff; font-size: 13px; font-weight: 600; color: var(--gris); }
+.na.sel { background: var(--naranja); border-color: var(--naranja); color: #fff; }
+input:disabled { background: #eef1f4; color: var(--gris); }

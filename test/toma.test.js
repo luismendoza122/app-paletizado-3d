@@ -153,3 +153,18 @@ test('borrar posiciones agregadas; x1 y x2 son fijas; sin llenar no cuentan', as
   // se puede volver a agregar
   assert.deepEqual(agregarPosiciones(filas, '05', '001', ['y1']).nuevas, ['05-001y1']);
 });
+
+test('"No aplica" deja la posición completa; sin medidas no entra al cálculo', () => {
+  const base = { CODIGO: '05-001x1', SECCION: 'Seco no alimentos', ARTICULO: 'EXHIBIDOR', CODIGO_ARTICULO: 'NO APLICA', LARGO_A_MM: '400', ANCHO_B_MM: '300', ALTO_H_MM: '200', PESO_KG: '5', EMPAQUE: 'NO APLICA', LIQUIDO: 'NO APLICA', DELICADO: 'N/A' };
+  assert.equal(estadoDe(base), 'COMPLETA');
+  let r = articuloDesdeFila(base);
+  assert.deepEqual(r.faltan, []);                       // se puede calcular
+  assert.equal(r.articulo.empaque, 'CAJA');
+  assert.equal(r.articulo.liquido, false);
+  assert.equal(r.articulo.delicado, false);
+  assert.equal(r.articulo.codigo, 'SIN-CODIGO-05-001x1');
+  r = articuloDesdeFila({ ...base, PESO_KG: 'NO APLICA' });
+  assert.deepEqual(r.faltan, ['peso (no aplica)']);    // completa, pero no entra al cálculo
+  assert.equal(estadoDe({ ...base, PESO_KG: 'NO APLICA' }), 'COMPLETA');
+  assert.equal(catalogo([base]).size, 0);               // "no aplica" no autocompleta otros
+});
