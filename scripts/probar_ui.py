@@ -44,7 +44,9 @@ with sync_playwright() as p:
     pg.locator('#cerrarPos').click() if pg.locator('#cerrarPos').count() else None; pg.wait_for_timeout(200)
     pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
     print('peso deshabilitado al reabrir:', pg.is_disabled('[name=PESO_KG]'))
-    pg.click('#borrarPos'); pg.wait_for_timeout(400)
+    pg.click('#borrarPos'); pg.wait_for_timeout(300)
+    print('pide confirmar (tiene datos):', pg.locator('.caja [data-r="1"]').count() == 1)
+    pg.click('.caja [data-r="1"]'); pg.wait_for_timeout(400)
     cods = pg.evaluate("JSON.parse(localStorage.getItem('paletizado3d:ubicaciones')).map(f=>f.CODIGO).filter(c=>c.startsWith('05-001'))")
     print('despues de borrar y1:', cods); assert '05-001y1' not in cods and '05-001y2' in cods
     pg.locator('.pos', has_text='05-001x1').first.click(); pg.wait_for_timeout(300)
