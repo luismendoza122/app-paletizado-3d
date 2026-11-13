@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "Instalar bibliotecas", "type": "shell", "command": "npm install", "problemMatcher": [] },
+    { "label": "Pruebas", "type": "shell", "command": "npm test", "group": { "kind": "test", "isDefault": true }, "problemMatcher": [] },
+    { "label": "Preparar app web", "type": "shell", "command": "npm run build", "problemMatcher": [] },
+    { "label": "Abrir en el navegador (localhost:5173)", "type": "shell", "command": "npm start", "isBackground": true, "problemMatcher": [] },
+    { "label": "Compilar APK", "type": "shell", "command": "npm run apk", "group": { "kind": "build", "isDefault": true }, "problemMatcher": [] }
+  ]
+}

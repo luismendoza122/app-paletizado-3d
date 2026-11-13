@@ -1,0 +1,30 @@
+# Compila la APK en Windows con el mismo script que se usa en el PC (scripts/compilar-apk.ps1).
+name: Compilar en Windows
+
+on:
+  push:
+    branches: ['pruebas-**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: 21
+      - name: Compilar APK (PowerShell)
+        shell: pwsh
+        run: ./scripts/compilar-apk.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paletizado-3d-windows
+          path: salida/paletizado-3d.apk

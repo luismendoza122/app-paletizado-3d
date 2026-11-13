@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Depurar la app en Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/www",
+      "preLaunchTask": "Abrir en el navegador (localhost:5173)"
+    },
+    {
+      "name": "Depurar pruebas (Node)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--test", "test/"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

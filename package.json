@@ -8,7 +8,8 @@
     "test": "node --test test/*.test.js",
     "build": "node scripts/preparar.js",
     "start": "node scripts/servidor.js",
-    "artefacto": "node scripts/artefacto.js"
+    "artefacto": "node scripts/artefacto.js",
+    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/compilar-apk.ps1"
   },
   "dependencies": {
     "three": "^0.180.0",
