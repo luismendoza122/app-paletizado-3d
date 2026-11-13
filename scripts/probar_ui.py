@@ -32,7 +32,7 @@ with sync_playwright() as p:
     pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
     print('formulario y1:', pg.locator('form').last.inner_text()[:50].replace(chr(10),' '))
     pg.click('#cerrarPos')
-    pg.click('[data-ir="agente"]'); pg.wait_for_timeout(300)
+    pg.click('[data-tab="agente"]'); pg.wait_for_timeout(300)
     with pg.expect_download() as d: pg.click('#diagExcel')
     d.value.save_as(f'salida/{d.value.suggested_filename}'); print('diag:', d.value.suggested_filename)
     print('whatsapp:', pg.locator('a[href^="https://wa.me"]').first.get_attribute('href')[:90])
