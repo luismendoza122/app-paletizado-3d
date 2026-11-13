@@ -1,5 +1,5 @@
 // Mapa de ubicaciones del CEDI ATS R10 Valledupar (confirmado por Luis).
-// Cada pasillo: módulos 001–056 sin múltiplos de 3, cada uno con posiciones x1 y x2.
+// Cada pasillo: módulos 001–056 sin múltiplos de 3, cada uno con posiciones x1 y x2 (se pueden agregar x3, y1–y3, z1–z3).
 // Ruta: cada pasillo del 001 al 056, de lado a lado; la secuencia empieza en 1 en cada zona.
 
 export const ZONAS = [
@@ -12,6 +12,14 @@ export const ZONAS = [
 ];
 
 export const MODULOS = Array.from({ length: 56 }, (_, i) => i + 1).filter((n) => n % 3 !== 0).map((n) => String(n).padStart(3, '0'));
+
+// Posiciones que puede tener un módulo. x1 y x2 vienen siempre; las demás se agregan cuando el módulo las tiene.
+// Orden de la ruta dentro del módulo: x1, x2, x3, y1, y2, y3, z1, z2, z3.
+export const POSICIONES = ['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'z1', 'z2', 'z3'];
+export const POSICIONES_BASE = ['x1', 'x2'];
+const DESPLAZAMIENTO = { x1: 0, x2: 1, x3: 1.2, y1: 1.3, y2: 1.4, y3: 1.5, z1: 1.6, z2: 1.7, z3: 1.8 };
+const RE_UBICACION = /^(.+)-(\d{3})([xyz][1-3])([AB])?$/;
+const r2 = (x) => Math.round(x * 100) / 100;
 
 export const CAMPOS_ARTICULO = ['ARTICULO', 'CODIGO_ARTICULO', 'LARGO_A_MM', 'ANCHO_B_MM', 'ALTO_H_MM', 'PESO_KG', 'EMPAQUE', 'LIQUIDO', 'DELICADO', 'MAX_CAJAS_ENCIMA'];
 export const COLUMNAS = ['CODIGO', 'SECCION', 'PASILLO', 'MODULO', 'POSICION', 'SUBPOSICION', 'SECUENCIA_RUTA', 'ARTICULO', 'CODIGO_ARTICULO',
@@ -55,8 +63,43 @@ export function mezclar(base, importadas) {
     porCodigo.set(f.CODIGO, { ...previa, ...limpia });
   }
   const filas = [...porCodigo.values()];
+  completarUbicaciones(filas, porCodigo);
   for (const f of filas) if (f.ESTADO !== 'DIVIDIDA' && f.ESTADO !== 'VACIA') f.ESTADO = estadoDe(f);
   return ordenar(filas);
+}
+
+// Ruta de una posición a partir de su código (para posiciones agregadas o que llegan de Excel sin esos datos).
+function completarUbicaciones(filas, porCodigo) {
+  for (const f of filas) {
+    if (f.PASILLO && f.MODULO && f.POSICION && f.SECUENCIA_RUTA !== undefined && f.SECUENCIA_RUTA !== '') continue;
+    const m = String(f.CODIGO).match(RE_UBICACION);
+    if (!m) continue;
+    const [, pasillo, modulo, posicion, sub = ''] = m;
+    const base = porCodigo.get(`${pasillo}-${modulo}x1`);
+    const zona = ZONAS.find((z) => z.pasillos.includes(pasillo));
+    if (!base || !zona) continue;
+    let sec = Number(base.SECUENCIA_RUTA) + DESPLAZAMIENTO[posicion];
+    if (sub) sec += sub === 'A' ? 0.05 : 0.06;
+    Object.assign(f, { SECCION: f.SECCION || zona.zona, PASILLO: pasillo, MODULO: modulo, POSICION: posicion, SUBPOSICION: sub, SECUENCIA_RUTA: r2(sec), BLOQUEADA: f.BLOQUEADA || 'NO' });
+  }
+}
+
+// Posiciones que aún se le pueden agregar a un módulo (ej. 05-001 → x3, y1, …, z3).
+export function posicionesDisponibles(filas, pasillo, modulo) {
+  const hay = new Set(filas.filter((f) => f.PASILLO === pasillo && f.MODULO === modulo).map((f) => f.POSICION));
+  return POSICIONES.filter((p) => !hay.has(p));
+}
+
+// Agrega posiciones a un módulo. Devuelve { filas, nuevas: [códigos] }.
+export function agregarPosiciones(filas, pasillo, modulo, posiciones) {
+  const base = filas.find((f) => f.PASILLO === pasillo && f.MODULO === modulo && f.POSICION === 'x1' && !f.SUBPOSICION);
+  if (!base) return { filas, nuevas: [] };
+  const libres = new Set(posicionesDisponibles(filas, pasillo, modulo));
+  const nuevas = posiciones.filter((p) => libres.has(p)).map((p) => ({
+    CODIGO: `${pasillo}-${modulo}${p}`, SECCION: base.SECCION, PASILLO: pasillo, MODULO: modulo, POSICION: p, SUBPOSICION: '',
+    SECUENCIA_RUTA: r2(Number(base.SECUENCIA_RUTA) + DESPLAZAMIENTO[p]), BLOQUEADA: 'NO', ESTADO: 'SIN REVISAR',
+  }));
+  return { filas: ordenar([...filas, ...nuevas]), nuevas: nuevas.map((f) => f.CODIGO) };
 }
 
 export function ordenar(filas) {
@@ -72,7 +115,7 @@ export function subdividir(filas, codigo) {
   const sec = Number(madre.SECUENCIA_RUTA);
   const hijas = ['A', 'B'].map((l, k) => ({
     CODIGO: `${codigo}${l}`, SECCION: madre.SECCION, PASILLO: madre.PASILLO, MODULO: madre.MODULO, POSICION: madre.POSICION,
-    SUBPOSICION: l, SECUENCIA_RUTA: Math.round((sec + (k + 1) * 0.1) * 10) / 10, BLOQUEADA: madre.BLOQUEADA || 'NO', ESTADO: 'SIN REVISAR',
+    SUBPOSICION: l, SECUENCIA_RUTA: r2(sec + (k === 0 ? 0.05 : 0.06)), BLOQUEADA: madre.BLOQUEADA || 'NO', ESTADO: 'SIN REVISAR',
   }));
   // Si la madre ya tenía artículo, pasa a la A.
   for (const k of CAMPOS_ARTICULO) if (madre[k] !== undefined && madre[k] !== '') { hijas[0][k] = madre[k]; delete madre[k]; }

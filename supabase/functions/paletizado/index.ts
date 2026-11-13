@@ -14,7 +14,7 @@ const CORS = {
 const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const PASILLOS = ["05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "LA52", "LA53", "LA54", "TE62", "TE63", "FV42", "CO31", "CO32"];
-const RE_CODIGO = /^([A-Z0-9]{2,4})-\d{3}x[12][AB]?$/;
+const RE_CODIGO = /^([A-Z0-9]{2,4})-\d{3}[xyz][1-3][AB]?$/;
 const CAMPOS = ["CODIGO", "SECCION", "PASILLO", "MODULO", "POSICION", "SUBPOSICION", "SECUENCIA_RUTA", "ARTICULO", "CODIGO_ARTICULO",
   "LARGO_A_MM", "ANCHO_B_MM", "ALTO_H_MM", "PESO_KG", "EMPAQUE", "LIQUIDO", "DELICADO", "MAX_CAJAS_ENCIMA", "NIVEL", "HUECO_ANCHO_MM",
   "HUECO_FONDO_MM", "HUECO_ALTO_MM", "PESO_MAX_KG", "TIPO", "BLOQUEADA", "ESTADO", "OBSERVACIONES", "ACTUALIZADO"];

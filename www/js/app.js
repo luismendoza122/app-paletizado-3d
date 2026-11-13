@@ -9,7 +9,7 @@ import { leerArchivo, aCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
-import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
+import { generarLayout, mezclar, estadoDe, subdividir, agregarPosiciones, posicionesDisponibles, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
 import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
@@ -71,7 +71,7 @@ function zonas() {
 
 function guardarFilas() {
   // Se guarda solo lo que tiene información (las posiciones sin revisar se regeneran del mapa).
-  guardar('ubicaciones', estado.filas.filter((f) => f.ESTADO !== 'SIN REVISAR' || f.SUBPOSICION));
+  guardar('ubicaciones', estado.filas.filter((f) => f.ESTADO !== 'SIN REVISAR' || f.SUBPOSICION || !POSICIONES_BASE.includes(f.POSICION)));
 }
 
 function contexto() {
@@ -79,7 +79,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.4.0';
+const VERSION_APP = '0.5.0';
 function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -695,6 +695,14 @@ function abrirFormulario(codigo) {
       <div class="grupo"><span>Bloqueada (no se mueve)</span>${opc('BLOQUEADA', ['NO', 'SI'])}</div>
       <label>Observaciones<input name="OBSERVACIONES" value="${v('OBSERVACIONES')}"></label>
     </details>
+    ${f.SUBPOSICION ? '' : (() => {
+      const libres = posicionesDisponibles(estado.filas, f.PASILLO, f.MODULO);
+      return libres.length ? `<details class="mas"><summary>Agregar posiciones al módulo ${esc(f.PASILLO)}-${esc(f.MODULO)}</summary>
+        <p class="nota">Toca las que tiene este módulo y luego "Agregar". Quedan en la ruta en este orden: x1, x2, x3, y1, y2, y3, z1, z2, z3.</p>
+        <div class="grupo">${libres.map((p) => `<button type="button" class="opcion nuevaPos" data-pos="${p}">${p}</button>`).join('')}</div>
+        <button class="boton sec" type="button" id="agregarPos">Agregar</button> <button class="boton sec" type="button" id="agregarTodas">Agregar todas</button>
+      </details>` : '';
+    })()}
     <div id="avisosPos"></div>
     <div class="acciones">
       <button class="boton" type="submit" id="guardarPos">Guardar y siguiente</button>
@@ -776,6 +784,19 @@ function abrirFormulario(codigo) {
     guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
     abrirFormulario(`${f.CODIGO}A`);
   });
+  // Posiciones nuevas en el módulo (x3, y1…z3): se comparten con todos por la nube
+  form.querySelectorAll('.nuevaPos').forEach((b) => b.addEventListener('click', () => b.classList.toggle('sel')));
+  const agregar = (lista) => {
+    if (!lista.length) { notificar('Toca primero las posiciones que tiene el módulo.', 'error'); return; }
+    const r = agregarPosiciones(estado.filas, f.PASILLO, f.MODULO, lista);
+    estado.filas = r.filas;
+    estado.filas.filter((x) => r.nuevas.includes(x.CODIGO)).forEach((x) => { x._pendiente = true; });
+    guardarFilas(); recalcular(); programarEnvio();
+    notificar(`Agregadas: ${r.nuevas.join(', ')}`, 'ok');
+    cerrar(); mostrar('tomar');
+  };
+  $('#agregarPos', fondo)?.addEventListener('click', () => agregar([...form.querySelectorAll('.nuevaPos.sel')].map((b) => b.dataset.pos)));
+  $('#agregarTodas', fondo)?.addEventListener('click', () => agregar([...form.querySelectorAll('.nuevaPos')].map((b) => b.dataset.pos)));
   $('#cerrarPos', fondo).addEventListener('click', cerrar);
 }
 

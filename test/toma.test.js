@@ -105,3 +105,29 @@ test('medidas en mm, cm o m se guardan en milímetros', () => {
   assert.deepEqual(revisarDatos(d), []);
   assert.ok(revisarDatos({ ...d, LARGO_A_MM: '4' })[0].includes('revisa la unidad'));
 });
+
+test('módulo con posiciones x3, y1–y3 y z1–z3', async () => {
+  const { agregarPosiciones, posicionesDisponibles, subdividir: dividir } = await import('../www/js/datos/layout.js');
+  let filas = generarLayout();
+  assert.deepEqual(posicionesDisponibles(filas, '05', '001'), ['x3', 'y1', 'y2', 'y3', 'z1', 'z2', 'z3']);
+  const r = agregarPosiciones(filas, '05', '001', ['y1', 'x3', 'z3', 'x1']);   // x1 ya existe: no se repite
+  assert.deepEqual(r.nuevas.sort(), ['05-001x3', '05-001y1', '05-001z3']);
+  filas = r.filas;
+  assert.equal(filas.length, 1748 + 3);
+  // Orden de ruta: x1, x2, x3, y1, z3 y luego el módulo 002
+  const ruta = filas.filter((f) => f.PASILLO === '05').slice(0, 6).map((f) => f.CODIGO);
+  assert.deepEqual(ruta, ['05-001x1', '05-001x2', '05-001x3', '05-001y1', '05-001z3', '05-002x1']);
+  // Una posición nueva también se puede dividir en A y B sin salirse del módulo
+  filas = dividir(filas, '05-001y1');
+  const orden = filas.filter((f) => f.PASILLO === '05' && f.ESTADO !== 'DIVIDIDA').slice(0, 7).map((f) => f.CODIGO);
+  assert.deepEqual(orden, ['05-001x1', '05-001x2', '05-001x3', '05-001y1A', '05-001y1B', '05-001z3', '05-002x1']);
+});
+
+test('posiciones nuevas que llegan de Excel o de la nube sin datos de ruta', () => {
+  const filas = mezclar(generarLayout(), [{ CODIGO: '12-004z2', ARTICULO: 'ARROZ 500G', PESO_KG: '10' }]);
+  const f = filas.find((x) => x.CODIGO === '12-004z2');
+  const x1 = filas.find((x) => x.CODIGO === '12-004x1');
+  assert.equal(f.PASILLO, '12'); assert.equal(f.MODULO, '004'); assert.equal(f.POSICION, 'z2');
+  assert.equal(f.SECCION, 'Seco alimentos');
+  assert.equal(f.SECUENCIA_RUTA, Number(x1.SECUENCIA_RUTA) + 1.7);
+});

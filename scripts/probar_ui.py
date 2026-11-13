@@ -21,6 +21,17 @@ with sync_playwright() as p:
     pg.goto('http://localhost:5173/'); pg.wait_for_timeout(1000)
     with pg.expect_download() as d: pg.click('#excelTodo')
     d.value.save_as(f'salida/{d.value.suggested_filename}'); print('excel:', d.value.suggested_filename)
+    # Posiciones x3, y1-y3, z1-z3 en un módulo
+    pg.click('[data-ir="tomar"]'); pg.wait_for_timeout(400)
+    pg.locator('.pos', has_text='05-001x1').first.click(); pg.wait_for_timeout(300)
+    pg.locator('summary', has_text='Agregar posiciones').click()
+    pg.click('#agregarTodas'); pg.wait_for_timeout(400)
+    cods = pg.evaluate("JSON.parse(localStorage.getItem('paletizado3d:ubicaciones')).map(f=>f.CODIGO).filter(c=>c.startsWith('05-001'))")
+    print('modulo 05-001:', cods)
+    assert '05-001z3' in cods and '05-001y2' in cods
+    pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
+    print('formulario y1:', pg.locator('form').last.inner_text()[:50].replace(chr(10),' '))
+    pg.click('#cerrarPos')
     pg.click('[data-ir="agente"]'); pg.wait_for_timeout(300)
     with pg.expect_download() as d: pg.click('#diagExcel')
     d.value.save_as(f'salida/{d.value.suggested_filename}'); print('diag:', d.value.suggested_filename)
