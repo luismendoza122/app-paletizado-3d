@@ -1,6 +1,6 @@
 // Permite usar la página sin internet (después de abrirla una vez con conexión).
-const CACHE = 'paletizado-0.5.0';
-const BASICOS = ['./', './index.html', './css/estilos.css', './js/app.js', './js/agente.js', './js/exportar.js', './js/visor.js',
+const CACHE = 'paletizado-0.6.0';
+const BASICOS = ['./', './index.html', './css/estilos.css', './js/app.js', './js/agente.js', './js/exportar.js', './js/biblioteca.js', './js/visor.js',
   './js/datos/almacen.js', './js/datos/importar.js', './js/datos/layout.js', './js/datos/nube.js',
   './js/motor/articulo.js', './js/motor/indice.js', './js/motor/mono.js', './js/motor/reubicacion.js', './js/motor/secuencia.js', './js/motor/simulacion.js',
   './vendor/three/three.module.js', './vendor/three/three.core.js', './vendor/three/addons/controls/OrbitControls.js', './vendor/xlsx.full.min.js',

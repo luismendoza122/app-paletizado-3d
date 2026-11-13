@@ -1,7 +1,8 @@
 // Agente Paletizado: revisa los datos tomados, propone mejoras y movimientos, y responde preguntas.
 // Funciona sin internet, con las reglas del proyecto (no es un chat de IA en línea).
-import { ZONAS, estadoDe } from './datos/layout.js';
+import { ZONAS, estadoDe, cuenta } from './datos/layout.js';
 import { proponerReubicacion } from './motor/reubicacion.js';
+import { buscarEnBiblioteca, BIBLIOTECA } from './biblioteca.js';
 
 const RANGO = { BASE: 0, MEDIO: 1, TOPE: 2 };
 const sinTildes = (s) => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -12,7 +13,7 @@ function pasillosDe(filas) {
 }
 
 function avance(filas) {
-  const vivas = filas.filter((f) => f.ESTADO !== 'DIVIDIDA');
+  const vivas = filas.filter(cuenta);
   const c = { total: vivas.length, 'SIN REVISAR': 0, VACIA: 0, INCOMPLETA: 0, COMPLETA: 0 };
   vivas.forEach((f) => { c[estadoDe(f)]++; });
   c.revisadas = c.total - c['SIN REVISAR'];
@@ -120,37 +121,26 @@ export function responder(pregunta, ctx) {
   const pasillo = buscarPasillo(pregunta, ctx.filas);
   const zona = buscarZona(pregunta);
 
-  if (/hola|buen(os|as)|ayuda|que (puedes|sabes)|como funciona/.test(t) && t.length < 40) {
+  if (/^(hola|buen(os|as)|ayuda|que (puedes|sabes)( hacer)?|como funcionas?)\b/.test(t.trim()) && t.length < 40) {
     return ['Soy el agente de paletizado del CEDI. Puedo decirte:',
       '• Cuánto falta por tomar (todo el CEDI, una zona o un pasillo).',
       '• Qué mejoras hacer y qué movimientos van primero.',
       '• Dónde debe ir un artículo y por qué.',
-      '• Cómo tomar las medidas y qué significa BASE, MEDIO y TOPE.',
-      'Ejemplos: "¿cómo voy en el pasillo 12?", "¿qué movimientos hago primero en alimentos?", "¿dónde va el aceite?"'];
+      `• Cualquier duda del proyecto: uso de la app, reglas del CEDI, cálculo del palet, logística, WPMS, SAP y análisis de datos (${BIBLIOTECA.length} fichas en mi biblioteca).`,
+      'Ejemplos: "¿cómo voy en el pasillo 12?", "¿dónde va el aceite?", "¿cómo agrego una posición y1?", "¿qué es FEFO?"'];
+  }
+
+  // Preguntas de "cómo / qué es / por qué": primero la biblioteca, si no se pregunta por un pasillo, zona o artículo
+  const fichas = buscarEnBiblioteca(pregunta);
+  const explicativa = /^(como|que es|que son|que significa|para que|por que|porque|cual es|cuales son|explica|se puede|puedo|donde (esta|veo|encuentro)|cuando)\b/.test(t.trim().replace(/^[¿?¡!\s]+/, ''));
+  if (fichas.length && fichas[0].puntos >= 3 && (explicativa || fichas[0].puntos >= 6) && !pasillo && !zona && !/donde va|donde ubic|donde pongo|donde deberia/.test(t)) {
+    return respuestaBiblioteca(fichas);
   }
 
   if (/aprendi|aprendizaje|que sabes de|hoy aprend|novedad/.test(t)) {
     const k = ctx.conocimiento || [];
     if (!k.length) return ['Todavía no tengo aprendizaje guardado en este celular. Cuando haya internet lo bajo solo (cada día aprendo de gestión logística, WPMS/WMS, SAP y análisis de datos).'];
     return ['Lo último que aprendí:', ...k.slice(0, 3).map((x) => `• ${x.fecha} · ${x.tema}: ${x.titulo}. ${x.contenido.slice(0, 220)}${x.contenido.length > 220 ? '…' : ''}`)];
-  }
-
-  if (/medir|medida|como tomo|tomar dato|cm|centimetro|pesar/.test(t)) {
-    return ['Cómo tomar los datos de una posición:',
-      '1. Artículo y código tal como salen en la etiqueta o en el WPMS.',
-      '2. Medidas de la caja en milímetros: A = largo (el lado más largo de la base), B = ancho, H = alto. Mide 3 cajas y anota la mayor (las cajas se abomban).',
-      '3. Peso de una caja o bulto en kg (báscula).',
-      '4. Empaque: CAJA o BULTO (saco). Líquido: SÍ si tiene botellas, galones o bolsas con líquido. Delicado: SÍ si se aplasta o se rompe (huevos, galletas, papas, vidrio delicado).',
-      '5. Si la posición está vacía, márcala como vacía: no cuenta.',
-      'Si el mismo artículo está en otra posición, al escribir su código la app llena el resto sola.'];
-  }
-
-  if (/base|medio|tope|clase|indice|que significa/.test(t)) {
-    return ['Cada artículo recibe un índice de 0 a 1 según su peso (45 %), lo que aguanta encima (30 %), su densidad (15 %) y su altura (10 %). Bulto y líquido suben; delicado siempre baja.',
-      '• BASE: pesado y resistente. Va al inicio del pasillo para que quede abajo en el palet.',
-      '• MEDIO: va en el centro del pasillo.',
-      '• TOPE: liviano o delicado. Va al final del pasillo para que quede arriba.',
-      'Así cualquier tarea que empiece en un pasillo arranca con base firme, aunque la tarea sea de 5 o de 200 cajas.'];
   }
 
   if (/donde va|donde ubic|ubicar|donde pongo|donde deberia/.test(t)) {
@@ -215,8 +205,18 @@ export function responder(pregunta, ctx) {
       ctx.paletConfirmado ? 'Estos valores ya fueron confirmados en Ajustes.' : 'Ojo: son valores de ejemplo hasta que los confirmes con el CEDI en Ajustes.'];
   }
 
+  if (fichas.length) return respuestaBiblioteca(fichas);
+
   const saber = buscarConocimiento(pregunta, ctx.conocimiento || []);
   if (saber.length) return [...saber.flatMap((k) => [`${k.tema} — ${k.titulo} (${k.fecha}):`, k.contenido]), 'Esto viene del aprendizaje diario del agente.'];
 
-  return ['No entendí bien la pregunta. Prueba con: "¿cómo voy?", "¿qué mejoras hay en el pasillo 12?", "¿qué movimientos hago primero?", "¿dónde va el arroz?" o "¿cómo tomo las medidas?".'];
+  return ['No encontré eso en mi biblioteca. Puedo responder sobre: uso de la app (tomar datos, agregar o borrar posiciones, tareas por WhatsApp, Excel, video), reglas del CEDI (zonas, módulos, ruta, BASE/MEDIO/TOPE), el cálculo del palet, logística (ABC, FEFO, TI-HI, slotting), WPMS, SAP y análisis de datos.',
+    'Prueba con otras palabras, por ejemplo: "¿cómo borro una posición?" o "¿qué es el índice de arrume?".'];
+}
+
+function respuestaBiblioteca(fichas) {
+  const [mejor, segunda] = fichas;
+  const r = [`${mejor.ficha.titulo}:`, ...mejor.ficha.texto];
+  if (segunda && segunda.puntos >= mejor.puntos * 0.8) r.push(`También te puede servir: "${segunda.ficha.titulo}" (pregúntame por eso).`);
+  return r;
 }

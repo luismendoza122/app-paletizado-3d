@@ -131,3 +131,25 @@ test('posiciones nuevas que llegan de Excel o de la nube sin datos de ruta', () 
   assert.equal(f.SECCION, 'Seco alimentos');
   assert.equal(f.SECUENCIA_RUTA, Number(x1.SECUENCIA_RUTA) + 1.7);
 });
+
+test('borrar posiciones agregadas; x1 y x2 son fijas; sin llenar no cuentan', async () => {
+  const { agregarPosiciones, borrarPosicion, cuenta, subdividir: dividir } = await import('../www/js/datos/layout.js');
+  let filas = agregarPosiciones(generarLayout(), '05', '001', ['x3', 'y1', 'z1']).filas;
+  const contadas = () => filas.filter(cuenta).length;
+  assert.equal(contadas(), 1748);                                  // agregadas vacías no cuentan
+  filas.find((f) => f.CODIGO === '05-001x3').ARTICULO = 'AZUCAR 1KG';
+  assert.equal(contadas(), 1749);                                  // al llenarla, cuenta
+  filas.find((f) => f.CODIGO === '05-001z1').ESTADO = 'VACIA';
+  assert.equal(contadas(), 1749);                                  // agregada vacía tampoco cuenta
+  // x1 y x2 no se borran
+  assert.equal(borrarPosicion(filas, '05-001x1').borradas.length, 0);
+  assert.equal(borrarPosicion(filas, '05-001x2').borradas.length, 0);
+  // y1 dividida en A y B: se borra completa
+  filas = dividir(filas, '05-001y1');
+  const r = borrarPosicion(filas, '05-001y1');
+  assert.deepEqual(r.borradas.map((f) => f.CODIGO).sort(), ['05-001y1', '05-001y1A', '05-001y1B']);
+  filas = r.filas;
+  assert.ok(!filas.some((f) => f.CODIGO.startsWith('05-001y1')));
+  // se puede volver a agregar
+  assert.deepEqual(agregarPosiciones(filas, '05', '001', ['y1']).nuevas, ['05-001y1']);
+});

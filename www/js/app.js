@@ -8,8 +8,9 @@ import { simularPedido } from './motor/simulacion.js';
 import { leerArchivo, aCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
+import { BIBLIOTECA } from './biblioteca.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
-import { generarLayout, mezclar, estadoDe, subdividir, agregarPosiciones, posicionesDisponibles, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
+import { generarLayout, mezclar, estadoDe, subdividir, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
 import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
@@ -31,6 +32,7 @@ const estado = {
   colores: new Map(),
   tarea: leer('tarea', null),            // tarea abierta por enlace (modo operador)
   conflictos: leer('conflictos', []),    // posiciones que otro cambió al mismo tiempo
+  borradas: leer('borradas', {}),        // posiciones agregadas que se borraron: { codigo: { version, pendiente } }
   conocimiento: leer('conocimiento', []),// aprendizaje diario del agente
   conSesion: !!leer('sesion', null),     // Luis inició sesión
   sincronizando: false,
@@ -72,6 +74,17 @@ function zonas() {
 function guardarFilas() {
   // Se guarda solo lo que tiene información (las posiciones sin revisar se regeneran del mapa).
   guardar('ubicaciones', estado.filas.filter((f) => f.ESTADO !== 'SIN REVISAR' || f.SUBPOSICION || !POSICIONES_BASE.includes(f.POSICION)));
+  guardar('borradas', estado.borradas);
+}
+
+// Si se vuelve a crear una posición que se había borrado, sigue con su versión en la nube.
+function revivir() {
+  for (const f of estado.filas) {
+    const b = estado.borradas[f.CODIGO];
+    if (!b) continue;
+    f._version = b.version || f._version; f._pendiente = true;
+    delete estado.borradas[f.CODIGO];
+  }
 }
 
 function contexto() {
@@ -79,7 +92,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.5.0';
+const VERSION_APP = '0.6.0';
 function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -90,6 +103,15 @@ function aplicarServidor(lista) {
   let nuevas = 0;
   for (const r of lista || []) {
     let f = porCodigo.get(r.codigo);
+    const b = estado.borradas[r.codigo];
+    if (b?.pendiente) continue;                              // este celular la borró y no lo ha enviado
+    if (r.datos?.ESTADO === 'BORRADA') {                     // otra persona la borró
+      if (f && f._pendiente) continue;
+      if (f) { estado.filas = estado.filas.filter((x) => x !== f); porCodigo.delete(r.codigo); }
+      estado.borradas[r.codigo] = { version: r.version };
+      continue;
+    }
+    if (b) delete estado.borradas[r.codigo];                 // la volvieron a crear
     if (f && f._pendiente) continue;
     if (!f) { f = { CODIGO: r.codigo }; estado.filas.push(f); porCodigo.set(r.codigo, f); nuevas++; }
     for (const k of Object.keys(f)) if (!['CODIGO', 'SECCION', 'PASILLO', 'MODULO', 'POSICION', 'SUBPOSICION', 'SECUENCIA_RUTA'].includes(k) && !k.startsWith('_')) delete f[k];
@@ -109,7 +131,8 @@ function programarEnvio() {
 
 async function sincronizar({ cerrar = !!estado.tarea?.terminada } = {}) {
   if (estado.sincronizando || !enLinea()) return;
-  const cambios = pendientes().map((f) => ({ codigo: f.CODIGO, version_base: f._version || 0, datos: datosDe(f) }));
+  const cambios = [...pendientes().map((f) => ({ codigo: f.CODIGO, version_base: f._version || 0, datos: datosDe(f) })),
+    ...Object.entries(estado.borradas).filter(([, b]) => b.pendiente).map(([codigo, b]) => ({ codigo, version_base: b.version || 0, datos: { CODIGO: codigo, ESTADO: 'BORRADA' } }))];
   const t = estado.tarea;
   if (!t && !estado.conSesion) return;
   if (t?.cerrada) return;
@@ -121,10 +144,18 @@ async function sincronizar({ cerrar = !!estado.tarea?.terminada } = {}) {
     else r = await llamar('guardar', { cambios, por: 'Luis' }, await sesionVigente());
     const porCodigo = new Map(estado.filas.map((f) => [f.CODIGO, f]));
     for (const g of r.guardadas || []) {
+      if (estado.borradas[g.codigo]) { estado.borradas[g.codigo] = { version: g.version }; continue; }
       const f = porCodigo.get(g.codigo);
       if (f) { f._version = g.version; f._pendiente = false; f._por = miNombre(); f._en = new Date().toISOString(); }
     }
-    estado.conflictos = (r.conflictos || []).map((c) => ({ ...c, mio: datosDe(porCodigo.get(c.codigo) || {}) }));
+    // Si otra persona llenó una posición que este celular borró, queda la de ella (no se borra)
+    const noBorradas = (r.conflictos || []).filter((c) => estado.borradas[c.codigo]);
+    for (const c of noBorradas) {
+      delete estado.borradas[c.codigo];
+      estado.filas.push({ ...c.servidor, CODIGO: c.codigo, _version: c.version });
+    }
+    if (noBorradas.length) { estado.filas = mezclar(estado.filas, []); notificar(`No se borró ${noBorradas.map((c) => c.codigo).join(', ')}: otra persona ya la había llenado.`, 'error'); }
+    estado.conflictos = (r.conflictos || []).filter((c) => !noBorradas.includes(c)).map((c) => ({ ...c, mio: datosDe(porCodigo.get(c.codigo) || {}) }));
     guardar('conflictos', estado.conflictos);
     if (r.posiciones) aplicarServidor(r.posiciones); else guardarFilas();
     if (r.cerrada && t) { t.cerrada = true; guardar('tarea', t); notificar('Tarea enviada. El enlace quedó inhabilitado.'); }
@@ -277,14 +308,14 @@ async function copiar(texto) {
 // ---------- Pantallas ----------
 const pantallas = {
   inicio() {
-    const total = estado.filas.filter((f) => f.ESTADO !== 'DIVIDIDA').length;
-    const revisadas = estado.filas.filter((f) => f.ESTADO !== 'DIVIDIDA' && estadoDe(f) !== 'SIN REVISAR').length;
+    const total = estado.filas.filter(cuenta).length;
+    const revisadas = estado.filas.filter((f) => cuenta(f) && estadoDe(f) !== 'SIN REVISAR').length;
     const ocupadas = estado.posiciones.length;
     const completas = estado.posiciones.filter((p) => !p.faltan.length).length;
     const pedidosUnicos = new Set(estado.pedidos.map((p) => p.PEDIDO)).size;
     const porZona = zonas().map((z) => {
       const pz = estado.posiciones.filter((p) => p.fila.SECCION === z);
-      return `<tr><td>${esc(z)}</td><td class="num">${fmt(estado.filas.filter((f) => f.SECCION === z && f.ESTADO !== 'DIVIDIDA').length)}</td><td class="num">${fmt(pz.length)}</td><td class="num">${fmt(pz.filter((p) => !p.faltan.length).length)}</td></tr>`;
+      return `<tr><td>${esc(z)}</td><td class="num">${fmt(estado.filas.filter((f) => f.SECCION === z && cuenta(f)).length)}</td><td class="num">${fmt(pz.length)}</td><td class="num">${fmt(pz.filter((p) => !p.faltan.length).length)}</td></tr>`;
     }).join('');
     return `${bannerTarea()}
       ${estado.paletConfirmado ? '' : '<div class="aviso">Las medidas del palet (altura y peso máximos) son <b>de ejemplo</b>. Confírmalas con el CEDI en <b>Ajustes</b>.</div>'}
@@ -325,12 +356,13 @@ const pantallas = {
     const pas = pasillos.includes(estado.tomaPasillo) ? estado.tomaPasillo : pasillos[0];
     const filtro = estado.tomaFiltro || 'todas';
     const delPasillo = estado.filas.filter((f) => f.PASILLO === pas && f.ESTADO !== 'DIVIDIDA');
-    const revisadas = delPasillo.filter((f) => estadoDe(f) !== 'SIN REVISAR').length;
+    const contadas = delPasillo.filter(cuenta).length;
+    const revisadas = delPasillo.filter((f) => cuenta(f) && estadoDe(f) !== 'SIN REVISAR').length;
     const lista = delPasillo.filter((f) => filtro === 'todas' || (filtro === 'pendientes' ? ['SIN REVISAR', 'INCOMPLETA'].includes(estadoDe(f)) : estadoDe(f) === 'COMPLETA'));
     const etiqueta = { 'SIN REVISAR': 'sin', VACIA: 'vac', INCOMPLETA: 'inc', COMPLETA: 'ok' };
     const filas = lista.map((f) => {
       const e = estadoDe(f);
-      return `<button class="pos ${etiqueta[e]}${f._pendiente ? ' pend' : ''}" data-cod="${esc(f.CODIGO)}"><b>${esc(f.CODIGO)}${f._pendiente ? ' ●' : ''}</b><span>${e === 'VACIA' ? 'Vacía' : e === 'SIN REVISAR' ? 'Sin revisar' : esc(f.ARTICULO || f.CODIGO_ARTICULO || '')}${e === 'INCOMPLETA' ? ' · <i>faltan datos</i>' : ''}</span></button>`;
+      return `<button class="pos ${etiqueta[e]}${f._pendiente ? ' pend' : ''}" data-cod="${esc(f.CODIGO)}"><b>${esc(f.CODIGO)}${f._pendiente ? ' ●' : ''}</b><span>${e === 'VACIA' ? 'Vacía' : e === 'SIN REVISAR' ? (esAgregada(f) ? 'Agregada · sin llenar (no cuenta)' : 'Sin revisar') : esc(f.ARTICULO || f.CODIGO_ARTICULO || '')}${e === 'INCOMPLETA' ? ' · <i>faltan datos</i>' : ''}</span></button>`;
     }).join('');
     const conflictos = estado.conflictos.map((c, i) => `<div class="conflicto"><b>${esc(c.codigo)}</b>: ${esc(c.por || 'Otra persona')} la cambió${c.en ? ` el ${esc(new Date(c.en).toLocaleString('es-CO'))}` : ''}.<br>
       Suya: ${esc(resumenDatos(c.servidor))}<br>Tuya: ${esc(resumenDatos(c.mio))}<br>
@@ -345,8 +377,8 @@ const pantallas = {
         <label>Pasillo<select id="tPasillo">${pasillos.map((x) => `<option ${x === pas ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
         <label>Mostrar<select id="tFiltro"><option value="todas" ${filtro === 'todas' ? 'selected' : ''}>Todas</option><option value="pendientes" ${filtro === 'pendientes' ? 'selected' : ''}>Pendientes</option><option value="completas" ${filtro === 'completas' ? 'selected' : ''}>Completas</option></select></label>
       </div>
-      <div class="barra-avance"><div style="width:${delPasillo.length ? Math.round((revisadas / delPasillo.length) * 100) : 0}%"></div></div>
-      <p class="nota">Pasillo ${esc(pas)}: ${revisadas} de ${delPasillo.length} revisadas.</p>
+      <div class="barra-avance"><div style="width:${contadas ? Math.round((revisadas / contadas) * 100) : 0}%"></div></div>
+      <p class="nota">Pasillo ${esc(pas)}: ${revisadas} de ${contadas} revisadas. Las posiciones agregadas sin llenar no cuentan.</p>
       <div class="lista-pos">${filas || '<p class="nota">Nada que mostrar con este filtro.</p>'}</div>
     </section>
     <section class="tarjeta">
@@ -407,10 +439,14 @@ const pantallas = {
     </section>
     <section class="tarjeta">
       <h2>Pregúntale al agente</h2>
-      <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Qué aprendiste hoy?', '¿Cómo tomo las medidas?', '¿Qué significa BASE, MEDIO y TOPE?']
+      <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Qué aprendiste hoy?', '¿Cómo agrego o borro una posición?', '¿Qué significa BASE, MEDIO y TOPE?']
         .map((q) => `<button class="boton sec" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
       <div class="chat" id="chat">${chat || '<p class="nota">Ejemplos: "¿cómo voy en el pasillo 12?", "¿dónde va el aceite?", "¿qué movimientos hago en alimentos?"</p>'}</div>
       <form id="formChat" class="fila"><label>Tu pregunta<input id="pregunta" autocomplete="off" placeholder="Escribe aquí…"></label><button class="boton">Preguntar</button></form>
+      <details class="mas"><summary>Biblioteca del agente (${BIBLIOTECA.length} fichas)</summary>
+        <p class="nota">Toca un tema para leerlo. También puedes preguntar con tus palabras.</p>
+        ${[...new Set(BIBLIOTECA.map((f) => f.tema))].map((tema) => `<h3>${esc(tema)}</h3><div class="rapidas">${BIBLIOTECA.map((f, i) => f.tema === tema ? `<button class="boton sec" data-ficha="${i}">${esc(f.titulo)}</button>` : '').join('')}</div>`).join('')}
+      </details>
     </section>`;
   },
 
@@ -708,6 +744,7 @@ function abrirFormulario(codigo) {
       <button class="boton" type="submit" id="guardarPos">Guardar y siguiente</button>
       <button class="boton sec" type="button" id="vaciaPos">Marcar vacía</button>
       ${f.SUBPOSICION ? '' : '<button class="boton sec" type="button" id="dividirPos">Dividir en A y B</button>'}
+      ${esAgregada(f) ? `<button class="boton peligro" type="button" id="borrarPos">Borrar ${esc(f.SUBPOSICION ? f.CODIGO.slice(0, -1) : f.CODIGO)}</button>` : ''}
       <button class="boton sec" type="button" id="cerrarPos">Cerrar</button>
     </div>
   </form>`;
@@ -784,6 +821,20 @@ function abrirFormulario(codigo) {
     guardarFilas(); recalcular(); cerrar(); mostrar('tomar');
     abrirFormulario(`${f.CODIGO}A`);
   });
+  // Borrar una posición agregada (x1 y x2 son fijas)
+  $('#borrarPos', fondo)?.addEventListener('click', async () => {
+    const codigo = f.SUBPOSICION ? f.CODIGO.slice(0, -1) : f.CODIGO;
+    const grupo = estado.filas.filter((x) => [codigo, `${codigo}A`, `${codigo}B`].includes(x.CODIGO));
+    const llenas = grupo.filter((x) => ['COMPLETA', 'INCOMPLETA'].includes(estadoDe(x)));
+    if (llenas.length && !(await confirmar(`${codigo} tiene datos (${llenas.map((x) => x.ARTICULO || x.CODIGO_ARTICULO).join(', ')}). ¿Borrarla de todas formas?`))) return;
+    const r = borrarPosicion(estado.filas, codigo);
+    estado.filas = r.filas;
+    // Si ya estaba en la nube se avisa a los demás; si nunca se envió, basta con quitarla de aquí
+    for (const x of r.borradas) if (x._version) estado.borradas[x.CODIGO] = { version: x._version, pendiente: true };
+    guardarFilas(); recalcular(); programarEnvio();
+    notificar(`Borrada: ${codigo}`, 'ok');
+    cerrar(); mostrar('tomar');
+  });
   // Posiciones nuevas en el módulo (x3, y1…z3): se comparten con todos por la nube
   form.querySelectorAll('.nuevaPos').forEach((b) => b.addEventListener('click', () => b.classList.toggle('sel')));
   const agregar = (lista) => {
@@ -791,6 +842,7 @@ function abrirFormulario(codigo) {
     const r = agregarPosiciones(estado.filas, f.PASILLO, f.MODULO, lista);
     estado.filas = r.filas;
     estado.filas.filter((x) => r.nuevas.includes(x.CODIGO)).forEach((x) => { x._pendiente = true; });
+    revivir();
     guardarFilas(); recalcular(); programarEnvio();
     notificar(`Agregadas: ${r.nuevas.join(', ')}`, 'ok');
     cerrar(); mostrar('tomar');
@@ -839,6 +891,7 @@ function conectar(tab) {
           // Lo que cambió en el Excel se marca para subirlo a la nube (una sola información para todos)
           const antes = new Map(estado.filas.map((f) => [f.CODIGO, JSON.stringify(datosDe(f))]));
           estado.filas = mezclar(estado.filas, r.ubicaciones);
+          revivir();
           let cambiadas = 0;
           for (const f of estado.filas) if (antes.get(f.CODIGO) !== JSON.stringify(datosDe(f))) { if (!estado.tarea) f._pendiente = true; cambiadas++; }
           guardarFilas();
@@ -910,6 +963,12 @@ function conectar(tab) {
   }
   if (tab === 'agente') {
     document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => preguntar(b.dataset.q)));
+    document.querySelectorAll('[data-ficha]').forEach((b) => b.addEventListener('click', () => {
+      const f = BIBLIOTECA[Number(b.dataset.ficha)];
+      estado.chat = [...(estado.chat || []), { de: 'yo', texto: [f.titulo] }, { de: 'agente', texto: [`${f.titulo}:`, ...f.texto] }].slice(-20);
+      mostrar('agente');
+      $('#chat')?.lastElementChild?.scrollIntoView({ block: 'nearest' });
+    }));
     $('#formChat').addEventListener('submit', (e) => { e.preventDefault(); preguntar($('#pregunta').value); });
     $('#diagExcel').addEventListener('click', () => exportarExcel('diagnostico', ['DIAGNOSTICO', 'ARTICULOS', 'REUBICACION']));
     $('#diagCopiar').addEventListener('click', () => copiar(textoDiagnostico(diagnostico(contexto()))));

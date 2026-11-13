@@ -117,3 +117,18 @@ test('fila de la hoja → artículo, y simulación de un pedido', () => {
   assert.equal(s.resumen.cajas, 12);
   assert.equal(s.faltantes.length, 1);
 });
+
+test('agente: responde preguntas del proyecto con su biblioteca', async () => {
+  const { responder } = await import('../www/js/agente.js');
+  const { generarLayout } = await import('../www/js/datos/layout.js');
+  const ctx = { filas: generarLayout(), posiciones: [], propuesta: null, pedidos: [], palet: { largo: 1200, ancho: 1000, altoBase: 150, alturaMaxTotal: 1800, cargaMax: 1000 }, conocimiento: [] };
+  const titulo = (q) => responder(q, ctx)[0];
+  assert.match(titulo('¿cómo borro una posición?'), /Borrar una posición agregada/);
+  assert.match(titulo('¿cómo agrego y1 al módulo 001?'), /Agregar posiciones/);
+  assert.match(titulo('¿qué es FEFO?'), /FEFO/);
+  assert.match(titulo('que es tihi'), /TI-HI/);
+  assert.match(titulo('transacciones de SAP'), /SAP/);
+  assert.match(titulo('¿cuál es la medida del palet en Colombia?'), /Colombia/);
+  assert.match(titulo('¿cómo voy en el pasillo 12?'), /pasillo 12/);         // los datos siguen primero
+  assert.match(titulo('qué tal el clima'), /No encontré/);
+});

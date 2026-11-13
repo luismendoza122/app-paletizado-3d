@@ -31,8 +31,17 @@ with sync_playwright() as p:
     assert '05-001z3' in cods and '05-001y2' in cods
     pg.locator('.pos', has_text='05-001y1').first.click(); pg.wait_for_timeout(300)
     print('formulario y1:', pg.locator('form').last.inner_text()[:50].replace(chr(10),' '))
+    pg.click('#borrarPos'); pg.wait_for_timeout(400)
+    cods = pg.evaluate("JSON.parse(localStorage.getItem('paletizado3d:ubicaciones')).map(f=>f.CODIGO).filter(c=>c.startsWith('05-001'))")
+    print('despues de borrar y1:', cods); assert '05-001y1' not in cods and '05-001y2' in cods
+    pg.locator('.pos', has_text='05-001x1').first.click(); pg.wait_for_timeout(300)
+    print('x1 sin boton borrar:', pg.locator('#borrarPos').count() == 0)
     pg.click('#cerrarPos')
     pg.click('[data-tab="agente"]'); pg.wait_for_timeout(300)
+    pg.fill('#pregunta', '¿cómo borro una posición?'); pg.click('#formChat button'); pg.wait_for_timeout(300)
+    print('agente:', pg.locator('#chat').inner_text()[-160:].replace(chr(10),' '))
+    pg.locator('summary', has_text='Biblioteca del agente').click(); pg.locator('[data-ficha]').nth(3).click(); pg.wait_for_timeout(300)
+    print('ficha:', pg.locator('#chat').inner_text()[-100:].replace(chr(10),' '))
     with pg.expect_download() as d: pg.click('#diagExcel')
     d.value.save_as(f'salida/{d.value.suggested_filename}'); print('diag:', d.value.suggested_filename)
     print('whatsapp:', pg.locator('a[href^="https://wa.me"]').first.get_attribute('href')[:90])

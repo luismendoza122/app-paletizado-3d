@@ -102,6 +102,20 @@ export function agregarPosiciones(filas, pasillo, modulo, posiciones) {
   return { filas: ordenar([...filas, ...nuevas]), nuevas: nuevas.map((f) => f.CODIGO) };
 }
 
+// x1 y x2 son fijas; las agregadas (x3, y1…z3) se pueden borrar.
+export const esAgregada = (f) => !!f.POSICION && !POSICIONES_BASE.includes(f.POSICION);
+
+// ¿Cuenta en el avance? No cuentan las madres divididas ni las agregadas sin llenar o vacías.
+export const cuenta = (f) => f.ESTADO !== 'DIVIDIDA' && !(esAgregada(f) && ['SIN REVISAR', 'VACIA'].includes(estadoDe(f)));
+
+// Borra una posición agregada (y sus mitades A y B si se dividió). Devuelve { filas, borradas }.
+export function borrarPosicion(filas, codigo) {
+  const f = filas.find((x) => x.CODIGO === codigo);
+  if (!f || !esAgregada(f) || f.SUBPOSICION) return { filas, borradas: [] };
+  const codigos = new Set([codigo, `${codigo}A`, `${codigo}B`]);
+  return { filas: filas.filter((x) => !codigos.has(x.CODIGO)), borradas: filas.filter((x) => codigos.has(x.CODIGO)) };
+}
+
 export function ordenar(filas) {
   const ordenZona = new Map(ZONAS.map((z, i) => [z.zona, i]));
   return filas.sort((a, b) => (ordenZona.get(a.SECCION) ?? 99) - (ordenZona.get(b.SECCION) ?? 99) || Number(a.SECUENCIA_RUTA) - Number(b.SECUENCIA_RUTA) || String(a.CODIGO).localeCompare(String(b.CODIGO)));
