@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cuaderno de THEMENDO</title>
+<meta name="theme-color" content="#16324f">
+<link rel="icon" href="../../icons/icono.svg" type="image/svg+xml">
+<style>
+:root{
+  --fondo:#f4f6f8; --tarjeta:#fff; --texto:#1b2430; --gris:#5b6775; --borde:#d8dee6;
+  --azul:#16324f; --azul2:#2f6fdd; --verde:#2a9d5c; --ambar:#b87a0c; --rojo:#c0392b; --suave:#eef3fb;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fondo:#0f1620; --tarjeta:#17212d; --texto:#e6edf5; --gris:#9aa8b8; --borde:#2a3746;
+    --azul:#0d2238; --azul2:#6c9cf0; --verde:#4cc283; --ambar:#e0a63a; --rojo:#ef7a6c; --suave:#1c2a3b;
+  }
+}
+:root[data-theme="dark"]{
+  --fondo:#0f1620; --tarjeta:#17212d; --texto:#e6edf5; --gris:#9aa8b8; --borde:#2a3746;
+  --azul:#0d2238; --azul2:#6c9cf0; --verde:#4cc283; --ambar:#e0a63a; --rojo:#ef7a6c; --suave:#1c2a3b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+header{background:var(--azul);color:#fff;padding:18px 16px;padding-top:max(18px,env(safe-area-inset-top))}
+.ancho{max-width:760px;margin:0 auto}
+header h1{margin:0;font-size:22px}
+header p{margin:4px 0 0;opacity:.85;font-size:14px}
+header a{color:#fff}
+main{padding:16px;display:flex;flex-direction:column;gap:16px}
+.tarjeta{background:var(--tarjeta);border:1px solid var(--borde);border-radius:12px;padding:16px}
+h2{font-size:17px;margin:0 0 8px}
+.nota{color:var(--gris);font-size:14px;margin:0 0 10px}
+label{display:block;font-size:13px;font-weight:600;color:var(--gris);margin:8px 0 4px}
+input,textarea{width:100%;font:inherit;color:var(--texto);background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:10px 12px}
+textarea{min-height:150px;resize:vertical;font-family:ui-monospace,Consolas,monospace;font-size:14px}
+.botones{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{font:inherit;font-weight:600;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--tarjeta);color:var(--texto);cursor:pointer}
+button.prim{background:var(--azul2);border-color:var(--azul2);color:#fff}
+button:disabled{opacity:.6;cursor:default}
+.msg{font-size:14px;margin:10px 0 0;min-height:1em}
+.ok{color:var(--verde)} .mal{color:var(--rojo)}
+.cifras{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cifra{background:var(--suave);border-radius:10px;padding:8px 12px;font-size:14px}
+.cifra b{font-size:18px;display:block}
+.leccion{border-top:1px solid var(--borde);padding:12px 0;display:flex;gap:10px;align-items:flex-start}
+.leccion pre{flex:1;min-width:0;margin:0;white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px}
+.etq{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--suave);margin-bottom:4px}
+.etq.nueva{color:var(--ambar)} .etq.cargada{color:var(--verde)}
+.leccion button{min-height:36px;font-size:13px;padding:0 10px;flex:none}
+details summary{cursor:pointer;font-weight:600}
+footer{color:var(--gris);font-size:12px;text-align:center;padding:4px 16px 24px}
+</style>
+</head>
+<body>
+<header>
+  <div class="ancho">
+    <h1>Cuaderno de THEMENDO</h1>
+    <p>Lo que THEMENDO aprende de cada tarea. Las lecciones nuevas se cargan solas en el agente de Copilot una vez al día. · <a href="../">Entorno THEMENDO</a></p>
+  </div>
+</header>
+<main class="ancho">
+  <section class="tarjeta" id="cajaNueva" hidden>
+    <h2>Lección recibida</h2>
+    <p class="nota">Revísala si quieres; se guarda en tu cuaderno.</p>
+    <textarea id="txtNueva" aria-label="Lección"></textarea>
+    <div class="botones"><button class="prim" id="btnGuardarNueva" type="button">Guardar lección</button></div>
+    <p class="msg" id="msgNueva" role="status"></p>
+  </section>
+
+  <section class="tarjeta" id="cajaEntrar" hidden>
+    <h2>Entrar</h2>
+    <p class="nota">Solo tú puedes guardar lecciones. Usa la misma cuenta de la Central que en Seguimiento de Recibo (en este navegador se pide una sola vez).</p>
+    <label for="correo">Correo de la Central</label><input id="correo" type="email" autocomplete="username">
+    <label for="clave">Contraseña</label><input id="clave" type="password" autocomplete="current-password">
+    <div class="botones"><button class="prim" id="btnEntrar" type="button">Entrar</button></div>
+    <p class="msg" id="msgEntrar" role="status"></p>
+  </section>
+
+  <section class="tarjeta" id="cajaLista" hidden>
+    <h2>Lecciones guardadas</h2>
+    <div class="cifras" id="cifras"></div>
+    <details>
+      <summary>Pegar una lección a mano</summary>
+      <textarea id="txtMano" placeholder="LECCIÓN · AAAA-MM-DD · tema&#10;Pedido: …&#10;Funcionó: …&#10;Error o corrección: …&#10;Para la próxima: …"></textarea>
+      <div class="botones"><button class="prim" id="btnGuardarMano" type="button">Guardar</button></div>
+      <p class="msg" id="msgMano" role="status"></p>
+    </details>
+    <div id="lista"><p class="nota">Cargando…</p></div>
+    <div class="botones"><button id="btnSalir" type="button">Cerrar sesión</button></div>
+  </section>
+</main>
+<footer>Entorno THEMENDO · Luis Mendoza · CEDI ATS R10 Valledupar</footer>
+<script>
+(function () {
+  'use strict';
+  const NUBE = { url: 'https://nfrqrboqxcpgsagnmwqq.supabase.co', llave: 'sb_publishable_73XleY68KOLPlGw_DrlQsA__IQzwPB8' };
+  const FUNCION = NUBE.url + '/functions/v1/themendo';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // misma sesión que Seguimiento de Recibo (mismo sitio)
+  const ls = {
+    get(k, d) { try { const v = localStorage.getItem('rc_nube_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('rc_nube_' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
+  };
+
+  // Lección que llega en el enlace: .../aprender/#t=<texto>
+  function leccionDelEnlace() {
+    const h = location.hash || '';
+    const i = h.indexOf('t=');
+    if (i < 0) return '';
+    let crudo = h.slice(i + 2);
+    let t;
+    try { t = decodeURIComponent(crudo.replace(/\+/g, '%20')); } catch { t = crudo.replace(/%20|\+/g, ' ').replace(/%0A/gi, '\n'); }
+    // ordenar el bloque si llegó en una sola línea
+    t = t.replace(/\s*\|\s*(?=(Pedido|Funcionó|Funciono|Error o corrección|Error|Para la próxima|Para la proxima)\s*:)/gi, '\n').trim();
+    return t;
+  }
+
+  async function token() {
+    const s = ls.get('sesion', null);
+    if (!s) return null;
+    if (Date.now() < s.vence - 60000) return s.token;
+    try {
+      const r = await fetch(NUBE.url + '/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: NUBE.llave }, body: JSON.stringify({ refresh_token: s.refresh }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error();
+      ls.set('sesion', { token: d.access_token, refresh: d.refresh_token, vence: Date.now() + (d.expires_in || 3600) * 1000 });
+      return d.access_token;
+    } catch { return null; }
+  }
+  async function llamar(accion, datos = {}) {
+    const h = { 'Content-Type': 'application/json', apikey: NUBE.llave };
+    const t = await token(); if (t) h.Authorization = 'Bearer ' + t;
+    const r = await fetch(FUNCION, { method: 'POST', headers: h, body: JSON.stringify({ accion, ...datos }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(d.error || ('Error ' + r.status)); e.status = r.status; throw e; }
+    return d;
+  }
+
+  const fechaTxt = (t) => { const d = new Date(t); return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }); };
+
+  async function pintarLista() {
+    $('cajaLista').hidden = false;
+    try {
+      const { lecciones } = await llamar('listar');
+      const nuevas = lecciones.filter((l) => l.estado === 'nueva').length;
+      $('cifras').innerHTML = '<div class="cifra"><b>' + lecciones.length + '</b>guardadas</div>' +
+        '<div class="cifra"><b>' + nuevas + '</b>por cargar en Copilot</div>' +
+        '<div class="cifra"><b>' + (lecciones.length - nuevas) + '</b>ya aprendidas</div>';
+      $('lista').innerHTML = lecciones.length ? lecciones.map((l) =>
+        '<div class="leccion"><div style="flex:1;min-width:0"><span class="etq ' + esc(l.estado) + '">' + (l.estado === 'nueva' ? 'Por cargar' : 'Aprendida') + ' · ' + esc(fechaTxt(l.creado)) + '</span>' +
+        '<pre>' + esc(l.texto) + '</pre></div><button type="button" data-id="' + esc(l.id) + '">Descartar</button></div>').join('')
+        : '<p class="nota">Todavía no hay lecciones. Cuando THEMENDO termine una tarea, toca su enlace «Guardar lección».</p>';
+      $('lista').querySelectorAll('button[data-id]').forEach((b) => b.addEventListener('click', async () => {
+        if (b.dataset.seguro !== '1') { b.dataset.seguro = '1'; b.textContent = '¿Seguro?'; setTimeout(() => { if (b.isConnected) { b.dataset.seguro = ''; b.textContent = 'Descartar'; } }, 4000); return; }
+        b.disabled = true;
+        try { await llamar('cambiar', { id: b.dataset.id, estado: 'descartada' }); await pintarLista(); } catch (e) { b.disabled = false; b.textContent = e.message; }
+      }));
+    } catch (e) {
+      if (e.status === 401) { mostrarEntrar(); return; }
+      $('lista').innerHTML = '<p class="nota mal">No se pudo cargar: ' + esc(e.message) + '</p>';
+    }
+  }
+
+  async function guardar(texto, origen, msgId, boton) {
+    const msg = $(msgId);
+    if (texto.trim().length < 10) { msg.className = 'msg mal'; msg.textContent = 'La lección está vacía.'; return false; }
+    if (boton) boton.disabled = true;
+    msg.className = 'msg'; msg.textContent = 'Guardando…';
+    try {
+      const r = await llamar('guardar', { texto, origen });
+      msg.className = 'msg ok';
+      msg.textContent = r.repetida ? 'Esa lección ya estaba en tu cuaderno.' : '¡Guardada! THEMENDO la aprende en la próxima carga diaria.';
+      await pintarLista();
+      return true;
+    } catch (e) {
+      if (e.status === 401) { mostrarEntrar(); msg.textContent = 'Entra primero; la lección sigue aquí.'; }
+      else { msg.className = 'msg mal'; msg.textContent = e.message; }
+      if (boton) boton.disabled = false;
+      return false;
+    }
+  }
+
+  function mostrarEntrar() { $('cajaEntrar').hidden = false; $('cajaLista').hidden = true; }
+
+  $('btnEntrar').addEventListener('click', async () => {
+    const m = $('msgEntrar'); m.className = 'msg'; m.textContent = 'Entrando…';
+    try {
+      const r = await fetch(NUBE.url + '/auth/v1/token?grant_type=password', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: NUBE.llave }, body: JSON.stringify({ email: $('correo').value.trim(), password: $('clave').value }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error_description || d.msg || 'No se pudo entrar');
+      ls.set('sesion', { token: d.access_token, refresh: d.refresh_token, vence: Date.now() + (d.expires_in || 3600) * 1000 });
+      $('clave').value = '';
+      const e = await llamar('estado');
+      if (!e.luis) { ls.set('sesion', null); throw new Error('Esa cuenta no es la de Luis.'); }
+      $('cajaEntrar').hidden = true; m.textContent = '';
+      await arrancar();
+    } catch (err) { m.className = 'msg mal'; m.textContent = err.message; }
+  });
+  $('btnGuardarNueva').addEventListener('click', () => guardar($('txtNueva').value, 'enlace', 'msgNueva', $('btnGuardarNueva')));
+  $('btnGuardarMano').addEventListener('click', async () => { if (await guardar($('txtMano').value, 'a mano', 'msgMano', $('btnGuardarMano'))) { $('txtMano').value = ''; $('btnGuardarMano').disabled = false; } });
+  $('btnSalir').addEventListener('click', () => { ls.set('sesion', null); location.reload(); });
+
+  const recibida = leccionDelEnlace();
+  if (recibida) {
+    $('cajaNueva').hidden = false; $('txtNueva').value = recibida;
+    try { history.replaceState(null, '', location.pathname); } catch { /* sin historial */ }
+  }
+  let yaGuardada = false;
+  async function arrancar() {
+    let e = { luis: false };
+    try { e = await llamar('estado'); } catch { /* sin conexión */ }
+    if (!e.luis) { mostrarEntrar(); return; }
+    if (recibida && !yaGuardada) { yaGuardada = true; await guardar($('txtNueva').value, 'enlace', 'msgNueva', $('btnGuardarNueva')); }
+    else await pintarLista();
+  }
+  arrancar();
+})();
+</script>
+</body>
+</html>
