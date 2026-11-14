@@ -15,6 +15,16 @@
     get(k, d) { try { const v = localStorage.getItem('rc_nube_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem('rc_nube_' + k, JSON.stringify(v)); } catch { /* sin almacenamiento */ } },
   };
+  // Enlace de invitación: .../recibo/#equipo=XXXXX-XXXXX deja este equipo conectado sin escribir nada.
+  // El código va después de # para que nunca viaje a ningún servidor; se borra de la dirección enseguida.
+  (function invitacion() {
+    const m = decodeURIComponent(location.hash || '').match(/^#equipo=([A-Za-z0-9-]{8,20})$/);
+    if (!m) return;
+    ls.set('equipo', m[1].toUpperCase());
+    ls.set('recienUnido', true);
+    try { history.replaceState(null, '', location.pathname + location.search); } catch { location.hash = ''; }
+  })();
+
   function idDispositivo() {
     let id = ls.get('dispositivo', null);
     if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)); ls.set('dispositivo', id); }
@@ -253,7 +263,9 @@
         '<button class="btn" id="nbSalir">Cerrar sesión</button></div>' +
         '<p class="note">El código de equipo deja entrar a los auditores sin tu contraseña. Si lo cambias, los equipos que tenían el anterior dejan de sincronizar hasta que escriban el nuevo.</p>';
     } else if (e.equipo) {
-      html += '<p class="note">Este equipo está conectado con el <b>código de equipo</b>.</p>' +
+      const nuevo = ls.get('recienUnido', false); ls.set('recienUnido', false);
+      html += (nuevo ? '<p class="note" style="color:var(--ok, #2a9d5c)"><b>¡Listo! Quedaste conectado a la nube del equipo.</b> Escribe tu nombre y SAP en «Auditor de este equipo», más abajo, para que tus planillas salgan a tu nombre.</p>' : '') +
+        '<p class="note">Este equipo está conectado con el <b>código de equipo</b>. Lo que registres lo ve todo el equipo.</p>' +
         '<div class="actions"><button class="btn" id="nbOlvidar">Desconectar este equipo</button></div>';
     } else {
       html += '<p class="note">Este equipo trabaja <b>solo aquí</b>. Para compartir planillas entre equipos, escribe el código de equipo que te dio Luis, o inicia sesión si eres Luis.</p>' +
@@ -291,8 +303,19 @@
     on('nbCrear', async () => {
       try {
         const r = await llamar('crear_codigo');
-        aviso('Código de equipo: ' + r.codigo + '  · Compártelo solo con los auditores. Se muestra una sola vez.');
         estado = await revisarEstado();
+        const enlace = location.origin + location.pathname + '#equipo=' + r.codigo;
+        const texto = 'Hola, te invito al Seguimiento de Recibo del CEDI. Abre este enlace en tu celular o PC y quedas conectado a las planillas del equipo (no lo compartas fuera del equipo):\n' + enlace +
+          '\nSi te pide código de equipo: ' + r.codigo + '\nDespués ve a Ajustes y escribe tu nombre en «Auditor de este equipo».';
+        const msg = document.getElementById('nbMsg');
+        msg.innerHTML = '<b>Código de equipo: ' + esc(r.codigo) + '</b> · se muestra una sola vez. Envíaselo solo a los conferencistas.' +
+          '<div class="actions"><a class="btn primary" id="nbWa" target="_blank" rel="noopener">Invitar por WhatsApp</a>' +
+          '<button class="btn" id="nbCopiar" type="button">Copiar invitación</button></div>';
+        document.getElementById('nbWa').href = 'https://wa.me/?text=' + encodeURIComponent(texto);
+        document.getElementById('nbCopiar').addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(texto); document.getElementById('nbCopiar').textContent = 'Copiada ✓'; }
+          catch { window.prompt('Copia la invitación:', texto); }
+        });
       } catch (err) { aviso(err.message); }
     });
     on('nbQuitar', async () => { try { await llamar('quitar_codigo'); estado = await revisarEstado(); await pintarTarjeta(); aviso('Código quitado.'); } catch (err) { aviso(err.message); } });
@@ -302,5 +325,4 @@
   window.entorno.pintarNube = pintarTarjeta;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => pintarTarjeta().catch(() => {}));
   else pintarTarjeta().catch(() => {});
-  void esc;
 })();
