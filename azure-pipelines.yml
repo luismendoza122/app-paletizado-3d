@@ -1,0 +1,47 @@
+# Compila la APK de Paletizado 3D en Azure Pipelines (Azure DevOps), en una máquina Windows de Microsoft.
+# Usa el mismo script que en el PC: scripts/compilar-apk.ps1
+# La APK queda en "Artefactos" de cada ejecución (paletizado-3d-apk).
+#
+# Firma fija (opcional, para que se instale encima de la APK de la Central):
+#   En la biblioteca de Azure DevOps sube "paletizado.keystore" como Archivo seguro (Secure file)
+#   y crea la variable secreta FIRMA_CLAVE en el pipeline.
+
+trigger: none          # solo se ejecuta cuando tú le das "Ejecutar"
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  usarFirma: false     # cámbialo a true cuando subas la llave como Secure file
+
+steps:
+  - checkout: self
+
+  - task: NodeTool@0
+    displayName: Node.js 22
+    inputs:
+      versionSpec: '22.x'
+
+  - task: DownloadSecureFile@1
+    name: llave
+    displayName: Descargar llave de firma
+    condition: eq(variables.usarFirma, true)
+    inputs:
+      secureFile: paletizado.keystore
+
+  - task: PowerShell@2
+    displayName: Compilar APK
+    inputs:
+      pwsh: true
+      targetType: filePath
+      filePath: scripts/compilar-apk.ps1
+    env:
+      JAVA_HOME: $(JAVA_HOME_21_X64)
+      FIRMA_ARCHIVO: $(llave.secureFilePath)
+      FIRMA_CLAVE: $(FIRMA_CLAVE)
+
+  - task: PublishPipelineArtifact@1
+    displayName: Guardar APK
+    inputs:
+      targetPath: salida/paletizado-3d.apk
+      artifact: paletizado-3d-apk

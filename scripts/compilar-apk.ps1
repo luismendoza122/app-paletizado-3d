@@ -45,7 +45,7 @@ Paso 'Proyecto Android'
 if (-not (Test-Path 'android')) { Ejecutar 'npx cap add android' }
 Ejecutar 'npx cap sync android'
 
-if ($env:FIRMA_ARCHIVO -and $env:FIRMA_CLAVE) {
+if ($env:FIRMA_ARCHIVO -and $env:FIRMA_CLAVE -and (Test-Path -LiteralPath $env:FIRMA_ARCHIVO)) {
   Paso 'Firma fija'
   Ejecutar 'node scripts/firmar-android.js'
 } else {
