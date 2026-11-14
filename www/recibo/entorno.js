@@ -73,7 +73,38 @@
   async function revisarEstado() {
     if (navigator.onLine === false) { estado = estado || { luis: !!ls.get('sesion', null), equipo: !!ls.get('equipo', ''), offline: true }; return estado; }
     try { estado = await llamar('estado'); } catch { estado = { luis: false, equipo: false, error: true }; }
+    if (estado.luis) ls.set('conectado', 'luis');
+    else if (estado.equipo) ls.set('conectado', 'codigo');
     return estado;
+  }
+  // ¿Este equipo entraba con un código (invitación o código general) y Luis se lo quitó?
+  function accesoPerdido() {
+    // (también los equipos conectados antes de esta versión, que no tienen la marca 'conectado')
+    const codigo = ls.get('equipo', '');
+    return !!codigo && ls.get('borradoPara', '') !== codigo && ls.get('conectado', null) !== 'luis' && !ls.get('sesion', null) && !!estado &&
+      !estado.luis && !estado.equipo && !estado.error && !estado.offline;
+  }
+  // Borra del equipo todo lo que vino de la nube del equipo: planillas, fotos, catálogo y ajustes.
+  // Queda solo el nombre del auditor de este equipo.
+  async function borrarDatosEquipo() {
+    ls.set('copia', {}); ls.set('desde', null); ls.set('conectado', null); ls.set('borradoPara', ls.get('equipo', ''));
+    for (const k of ['rc_cur', 'rc_cfg', 'rc_cfgDirty', 'rc_listas', 'rc_listasDirty', 'rc_art', 'rc_artDirty', 'rc_artDel', 'rc_driveAuto']) {
+      try { localStorage.removeItem(k); } catch { /* sin almacenamiento */ }
+    }
+    await new Promise((listo) => {
+      try {
+        const r = indexedDB.open('recibo-v1');
+        r.onsuccess = () => {
+          const db = r.result;
+          const tiendas = ['planillas', 'fotos'].filter((t) => db.objectStoreNames.contains(t));
+          if (!tiendas.length) { db.close(); listo(); return; }
+          const t = db.transaction(tiendas, 'readwrite');
+          tiendas.forEach((n) => t.objectStore(n).clear());
+          t.oncomplete = t.onerror = t.onabort = () => { db.close(); listo(); };
+        };
+        r.onerror = r.onblocked = () => listo();
+      } catch { listo(); }
+    });
   }
 
   // ---------- base de datos compartida (colecciones y documentos) ----------
@@ -145,7 +176,7 @@
     const ciclo = async () => {
       try { if (document.visibilityState !== 'hidden') await traerCambios(); } catch (e) {
         // Luis quitó a esta persona o cambió el código: se borra la copia del equipo y la página vuelve a modo local
-        if (e && e.code === 'sin_acceso' && !ls.get('sesion', null)) { ls.set('copia', {}); ls.set('desde', null); location.reload(); return; }
+        if (e && e.code === 'sin_acceso' && !ls.get('sesion', null)) { await borrarDatosEquipo(); location.reload(); return; }
         errores.forEach((f) => f(e));
       }
       reloj = setTimeout(ciclo, CADA_MS);
@@ -263,6 +294,7 @@
       }
       if (nombre !== 'db') return null;
       const e = await revisarEstado();
+      if (accesoPerdido()) { await borrarDatosEquipo(); location.reload(); return new Promise(() => {}); }
       if (!(e.luis || e.equipo)) return null;
       if (!e.offline) primeraCarga = traerCambios().catch(() => {});
       else primeraCarga = Promise.resolve();
@@ -395,7 +427,7 @@
     });
     on('nbQuitar', async () => { try { await llamar('quitar_codigo'); estado = await revisarEstado(); await pintarTarjeta(); aviso('Código general quitado: ahora solo entran las personas de la lista.'); } catch (err) { aviso(err.message); } });
     on('nbSalir', () => { ls.set('sesion', null); location.reload(); });
-    on('nbOlvidar', () => { ls.set('equipo', ''); location.reload(); });
+    on('nbOlvidar', () => { ls.set('equipo', ''); ls.set('conectado', null); location.reload(); });
   }
   window.entorno.pintarNube = pintarTarjeta;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => pintarTarjeta().catch(() => {}));
