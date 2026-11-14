@@ -81,12 +81,14 @@ footer{color:var(--gris);font-size:12px;text-align:center;padding:4px 16px 24px}
   <section class="tarjeta" id="cajaLista" hidden>
     <h2>Lecciones guardadas</h2>
     <div class="cifras" id="cifras"></div>
-    <details>
-      <summary>Pegar una lección a mano</summary>
+    <p class="nota">En THEMENDO toca <b>Copiar</b> en el bloque de la lección y luego <b>Pegar lección</b>. Si no lo haces, la revisión diaria la recoge sola de tus chats.</p>
+    <div class="botones"><button class="prim" id="btnPegar" type="button">Pegar lección</button></div>
+    <details id="detMano">
+      <summary>Escribir o pegar a mano</summary>
       <textarea id="txtMano" placeholder="LECCIÓN · AAAA-MM-DD · tema&#10;Pedido: …&#10;Funcionó: …&#10;Error o corrección: …&#10;Para la próxima: …"></textarea>
       <div class="botones"><button class="prim" id="btnGuardarMano" type="button">Guardar</button></div>
-      <p class="msg" id="msgMano" role="status"></p>
     </details>
+    <p class="msg" id="msgMano" role="status"></p>
     <div id="lista"><p class="nota">Cargando…</p></div>
     <div class="botones"><button id="btnSalir" type="button">Cerrar sesión</button></div>
   </section>
@@ -200,7 +202,36 @@ footer{color:var(--gris);font-size:12px;text-align:center;padding:4px 16px 24px}
     } catch (err) { m.className = 'msg mal'; m.textContent = err.message; }
   });
   $('btnGuardarNueva').addEventListener('click', () => guardar($('txtNueva').value, 'enlace', 'msgNueva', $('btnGuardarNueva')));
-  $('btnGuardarMano').addEventListener('click', async () => { if (await guardar($('txtMano').value, 'a mano', 'msgMano', $('btnGuardarMano'))) { $('txtMano').value = ''; $('btnGuardarMano').disabled = false; } });
+  // Separa un texto con una o varias lecciones (por ejemplo, un chat entero pegado)
+  function partir(texto) {
+    const t = String(texto || '').replace(/\r/g, '').replace(/```/g, '\n');
+    const trozos = t.split(/(?=^[ \t>*#]*LECCI[ÓO]N\b)/m).map((x) => x.replace(/^[ \t>*#]+/, '').trim()).filter((x) => /^LECCI[ÓO]N\b/.test(x));
+    return (trozos.length ? trozos : [t.trim()]).map((x) => {
+      // solo las líneas de la lección (hasta "Para la próxima")
+      const lineas = x.split('\n'); const fin = lineas.findIndex((l) => /^\s*Para la pr[óo]xima\s*:/i.test(l));
+      return (fin >= 0 ? lineas.slice(0, fin + 1) : lineas.slice(0, 8)).join('\n').trim();
+    }).filter((x) => x.length >= 10);
+  }
+  async function guardarVarias(texto, origen, boton) {
+    const msg = $('msgMano');
+    const lista = partir(texto);
+    if (!lista.length) { msg.className = 'msg mal'; msg.textContent = 'No encontré ninguna lección en lo que pegaste.'; return false; }
+    if (lista.length === 1) return guardar(lista[0], origen, 'msgMano', boton);
+    if (boton) boton.disabled = true;
+    let nuevas = 0, repetidas = 0;
+    for (const l of lista) { try { const r = await llamar('guardar', { texto: l, origen }); r.repetida ? repetidas++ : nuevas++; } catch (e) { if (e.status === 401) { mostrarEntrar(); break; } } }
+    msg.className = 'msg ok'; msg.textContent = nuevas + ' lecciones guardadas' + (repetidas ? ' · ' + repetidas + ' ya estaban' : '') + '.';
+    if (boton) boton.disabled = false;
+    await pintarLista();
+    return true;
+  }
+  $('btnGuardarMano').addEventListener('click', async () => { if (await guardarVarias($('txtMano').value, 'a mano', $('btnGuardarMano'))) { $('txtMano').value = ''; $('btnGuardarMano').disabled = false; } });
+  $('btnPegar').addEventListener('click', async () => {
+    let t = '';
+    try { t = await navigator.clipboard.readText(); } catch { /* el navegador no dejó leer */ }
+    if (!t) { $('detMano').open = true; $('txtMano').focus(); $('msgMano').className = 'msg'; $('msgMano').textContent = 'Pega aquí la lección (mantén presionado y Pegar) y toca Guardar.'; return; }
+    await guardarVarias(t, 'pegada', $('btnPegar'));
+  });
   $('btnSalir').addEventListener('click', () => { ls.set('sesion', null); location.reload(); });
 
   const recibida = leccionDelEnlace();

@@ -27,7 +27,9 @@ async function esLuis(req: Request): Promise<boolean> {
 // "LECCIÓN · 2026-11-14 · Excel de inventarios" → "Excel de inventarios"
 function temaDe(texto: string): string {
   const m = texto.match(/LECCI[ÓO]N\s*[·|-]\s*[\d-]{8,10}\s*[·|-]\s*([^\n]+)/i);
-  return m ? m[1].trim().slice(0, 80) : "";
+  if (m) return m[1].trim().slice(0, 80);
+  const t = texto.match(/Tema\s*:\s*([^\n|]+)/i);
+  return t ? t[1].trim().slice(0, 80) : "";
 }
 
 Deno.serve(async (req) => {
