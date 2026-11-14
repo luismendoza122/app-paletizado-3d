@@ -31,12 +31,19 @@ async function sha256(texto: string) {
   return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-async function codigoValido(codigo: string): Promise<boolean> {
+// Devuelve quién entra con ese código: el código general del equipo o una persona invitada (código personal).
+async function quienCodigo(codigo: string): Promise<null | { tipo: "equipo" } | { tipo: "persona"; id: string; nombre: string }> {
   const c = String(codigo || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (c.length < 8) return false;
+  if (c.length < 8) return null;
   const { data } = await sb.from("recibo_equipo").select("hash,sal").eq("id", "principal").maybeSingle();
-  if (!data) return false;
-  return (await sha256(data.sal + c)) === data.hash;
+  if (data && (await sha256(data.sal + c)) === data.hash) return { tipo: "equipo" };
+  const { data: m } = await sb.from("recibo_miembros").select("id,nombre,ultimo_uso").eq("hash", await sha256("persona:" + c)).eq("quitado", false).maybeSingle();
+  if (!m) return null;
+  // se anota el último uso (como mucho cada 5 minutos)
+  if (!m.ultimo_uso || Date.now() - Date.parse(m.ultimo_uso) > 300_000) {
+    await sb.from("recibo_miembros").update({ ultimo_uso: new Date().toISOString() }).eq("id", m.id);
+  }
+  return { tipo: "persona", id: m.id, nombre: m.nombre };
 }
 
 function codigoNuevo() {
@@ -56,12 +63,14 @@ Deno.serve(async (req) => {
   const accion = String(b.accion || "");
 
   const luis = await esLuis(req);
-  const equipo = !luis && (await codigoValido(req.headers.get("x-equipo") || ""));
-  const quien = luis ? "Luis" : equipo ? `equipo:${String(b.dispositivo || "").slice(0, 40)}` : "";
+  const acceso = luis ? null : await quienCodigo(req.headers.get("x-equipo") || "");
+  const equipo = !!acceso;
+  const persona = acceso && acceso.tipo === "persona" ? acceso.nombre : "";
+  const quien = luis ? "Luis" : persona ? `persona:${persona.slice(0, 40)}` : equipo ? `equipo:${String(b.dispositivo || "").slice(0, 40)}` : "";
 
   if (accion === "estado") {
     const { data } = await sb.from("recibo_equipo").select("id").eq("id", "principal").maybeSingle();
-    return json({ luis, equipo, hayCodigo: !!data, ahora: new Date().toISOString() });
+    return json({ luis, equipo, persona, hayCodigo: !!data, ahora: new Date().toISOString() });
   }
 
   if (accion === "crear_codigo" || accion === "quitar_codigo") {
@@ -76,6 +85,29 @@ Deno.serve(async (req) => {
     const { error } = await sb.from("recibo_equipo").upsert({ id: "principal", hash, sal, creado: new Date().toISOString() });
     if (error) return json({ error: "No se pudo guardar el código" }, 500);
     return json({ codigo });
+  }
+
+  // Personas invitadas: cada una con su código; Luis las ve y las puede quitar.
+  if (accion === "invitar" || accion === "personas" || accion === "quitar_persona") {
+    if (!luis) return json({ error: "Solo Luis puede manejar las personas del equipo" }, 403);
+    if (accion === "personas") {
+      const { data, error } = await sb.from("recibo_miembros").select("id,nombre,creado,ultimo_uso").eq("quitado", false).order("creado", { ascending: true });
+      if (error) return json({ error: "No se pudo leer la lista" }, 500);
+      return json({ personas: data || [] });
+    }
+    if (accion === "quitar_persona") {
+      const id = String(b.id || "");
+      if (!/^[0-9a-f-]{36}$/.test(id)) return json({ error: "Persona inválida" }, 400);
+      const { error } = await sb.from("recibo_miembros").update({ quitado: true, quitado_en: new Date().toISOString() }).eq("id", id);
+      if (error) return json({ error: "No se pudo quitar" }, 500);
+      return json({ ok: true });
+    }
+    const nombre = String(b.nombre || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (nombre.length < 2) return json({ error: "Escribe el nombre de la persona" }, 400);
+    const codigo = codigoNuevo();
+    const { data, error } = await sb.from("recibo_miembros").insert({ nombre, hash: await sha256("persona:" + codigo.replace("-", "")) }).select("id").single();
+    if (error) return json({ error: "No se pudo crear la invitación" }, 500);
+    return json({ codigo, id: data.id, nombre });
   }
 
   if (!luis && !equipo) return json({ error: "Sin acceso: inicia sesión o escribe el código de equipo" }, 401);

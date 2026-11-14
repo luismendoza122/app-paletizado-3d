@@ -143,7 +143,11 @@
   function arrancarSondeo() {
     if (reloj) return;
     const ciclo = async () => {
-      try { if (document.visibilityState !== 'hidden') await traerCambios(); } catch (e) { errores.forEach((f) => f(e)); }
+      try { if (document.visibilityState !== 'hidden') await traerCambios(); } catch (e) {
+        // Luis quitó a esta persona o cambió el código: se borra la copia del equipo y la página vuelve a modo local
+        if (e && e.code === 'sin_acceso' && !ls.get('sesion', null)) { ls.set('copia', {}); ls.set('desde', null); location.reload(); return; }
+        errores.forEach((f) => f(e));
+      }
       reloj = setTimeout(ciclo, CADA_MS);
     };
     reloj = setTimeout(ciclo, CADA_MS);
@@ -288,18 +292,25 @@
     let html = '<h2>Nube del equipo</h2>';
     if (e.luis) {
       html += '<p class="note">Conectado como <b>Luis</b>. Todo se comparte entre tus equipos.</p>' +
-        '<div class="actions"><button class="btn primary" id="nbCrear">' + (e.hayCodigo ? 'Cambiar código de equipo' : 'Crear código de equipo') + '</button>' +
-        (e.hayCodigo ? '<button class="btn" id="nbQuitar">Quitar código</button>' : '') +
-        '<button class="btn" id="nbSalir">Cerrar sesión</button></div>' +
-        '<p class="note">El código de equipo deja entrar a los auditores sin tu contraseña. Si lo cambias, los equipos que tenían el anterior dejan de sincronizar hasta que escriban el nuevo.</p>';
+        '<h3 style="margin:14px 0 4px;font-size:15px">Personas del equipo</h3>' +
+        '<p class="note">Cada persona recibe su propio enlace. Si alguien ya no debe entrar, tócale <b>Quitar</b> y solo esa persona queda por fuera.</p>' +
+        '<div class="bar"><label class="fld grow"><span>Nombre de la persona</span><input id="nbNombre" autocomplete="off" placeholder="Ej.: Edwin Carrillo"></label>' +
+        '<button class="btn primary" id="nbInvitar">Invitar</button></div>' +
+        '<p class="note" id="nbInvMsg" role="status"></p>' +
+        '<div id="nbPersonas" class="nbPersonas"><p class="note">Cargando personas…</p></div>' +
+        '<h3 style="margin:14px 0 4px;font-size:15px">Código general</h3>' +
+        '<p class="note">' + (e.hayCodigo ? 'Hay un código general activo: entra <b>cualquiera</b> que lo tenga y no se puede quitar a una sola persona. Cuando todos tengan su invitación personal, tócale «Quitar código general».' : 'No hay código general: solo entran las personas de la lista.') + '</p>' +
+        '<div class="actions"><button class="btn" id="nbCrear">' + (e.hayCodigo ? 'Cambiar código general' : 'Crear código general') + '</button>' +
+        (e.hayCodigo ? '<button class="btn" id="nbQuitar">Quitar código general</button>' : '') +
+        '<button class="btn" id="nbSalir">Cerrar sesión</button></div>';
     } else if (e.equipo) {
       const nuevo = ls.get('recienUnido', false); ls.set('recienUnido', false);
       html += (nuevo ? '<p class="note" style="color:var(--ok, #2a9d5c)"><b>¡Listo! Quedaste conectado a la nube del equipo.</b> Escribe tu nombre y SAP en «Auditor de este equipo», más abajo, para que tus planillas salgan a tu nombre.</p>' : '') +
-        '<p class="note">Este equipo está conectado con el <b>código de equipo</b>. Lo que registres lo ve todo el equipo.</p>' +
+        (e.persona ? '<p class="note">Conectado como <b>' + esc(e.persona) + '</b>. Lo que registres lo ve todo el equipo.</p>' : '<p class="note">Este equipo está conectado con el <b>código de equipo</b>. Lo que registres lo ve todo el equipo.</p>') +
         '<div class="actions"><button class="btn" id="nbOlvidar">Desconectar este equipo</button></div>';
     } else {
       html += '<p class="note">Este equipo trabaja <b>solo aquí</b>. Para compartir planillas entre equipos, escribe el código de equipo que te dio Luis, o inicia sesión si eres Luis.</p>' +
-        (conCodigo ? '<p class="note" style="color:var(--bad)">El código guardado ya no es válido. Pide el nuevo.</p>' : '') +
+        (conCodigo && !e.error ? '<p class="note" style="color:var(--bad)">Este equipo ya no tiene acceso: Luis quitó tu invitación o cambió el código. Pídele una invitación nueva.</p>' : '') +
         '<div class="bar"><label class="fld grow"><span>Código de equipo</span><input id="nbCodigo" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX"></label>' +
         '<button class="btn primary" id="nbUsarCodigo">Conectar</button></div>' +
         '<details><summary>Soy Luis: iniciar sesión</summary><div class="g2">' +
@@ -330,25 +341,59 @@
         else aviso('Esa cuenta no es la de Luis.');
       } catch (err) { aviso(err.message); }
     });
+    // Muestra la invitación lista para WhatsApp en el lugar indicado
+    function mostrarInvitacion(dondeId, codigo, nombre) {
+      const enlace = location.origin + location.pathname + '#equipo=' + codigo;
+      const texto = 'Hola' + (nombre ? ' ' + nombre : '') + ', te invito al Seguimiento de Recibo del CEDI. Abre este enlace en tu celular o PC y quedas conectado a las planillas del equipo' + (nombre ? '. Es personal: no lo reenvíes' : ' (no lo compartas fuera del equipo)') + ':\n' + enlace +
+        '\nSi te pide código de equipo: ' + codigo + '\nDespués ve a Ajustes y escribe tu nombre en «Auditor de este equipo».';
+      const msg = document.getElementById(dondeId);
+      msg.innerHTML = (nombre ? 'Invitación de <b>' + esc(nombre) + '</b> lista' : '<b>Código general: ' + esc(codigo) + '</b>') + ' · se muestra una sola vez. Envíala ahora.' +
+        '<div class="actions"><a class="btn primary" data-wa target="_blank" rel="noopener">Enviar por WhatsApp</a>' +
+        '<button class="btn" data-copiar type="button">Copiar invitación</button></div>';
+      msg.querySelector('[data-wa]').href = 'https://wa.me/?text=' + encodeURIComponent(texto);
+      msg.querySelector('[data-copiar]').addEventListener('click', async (ev) => {
+        try { await navigator.clipboard.writeText(texto); ev.target.textContent = 'Copiada ✓'; }
+        catch { window.prompt('Copia la invitación:', texto); }
+      });
+    }
+    const fecha = (t) => { if (!t) return 'todavía no ha entrado'; const d = new Date(t); return 'entró ' + d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }); };
+    async function pintarPersonas() {
+      const caja = document.getElementById('nbPersonas');
+      if (!caja) return;
+      try {
+        const { personas } = await llamar('personas');
+        if (!personas.length) { caja.innerHTML = '<p class="note">Todavía no has invitado a nadie con invitación personal.</p>'; return; }
+        caja.innerHTML = personas.map((x) => '<div class="nbPersona" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line, #ddd)">' +
+          '<div style="flex:1;min-width:0"><b>' + esc(x.nombre) + '</b><div class="note" style="margin:0">' + esc(fecha(x.ultimo_uso)) + '</div></div>' +
+          '<button class="btn sm" type="button" data-quitar="' + esc(x.id) + '" data-nombre="' + esc(x.nombre) + '">Quitar</button></div>').join('');
+        caja.querySelectorAll('[data-quitar]').forEach((b) => b.addEventListener('click', async () => {
+          if (b.dataset.seguro !== '1') { b.dataset.seguro = '1'; b.textContent = '¿Quitar? Toca otra vez'; setTimeout(() => { if (b.isConnected) { b.dataset.seguro = ''; b.textContent = 'Quitar'; } }, 4000); return; }
+          b.disabled = true; b.textContent = 'Quitando…';
+          try { await llamar('quitar_persona', { id: b.dataset.quitar }); aviso(b.dataset.nombre + ' ya no tiene acceso.'); await pintarPersonas(); }
+          catch (err) { b.disabled = false; b.textContent = 'Quitar'; aviso(err.message); }
+        }));
+      } catch (err) { caja.innerHTML = '<p class="note">No se pudo cargar la lista: ' + esc(err.message) + '</p>'; }
+    }
+    if (e.luis) pintarPersonas();
+    on('nbInvitar', async () => {
+      const inp = document.getElementById('nbNombre');
+      const nombre = inp.value.trim();
+      if (nombre.length < 2) { document.getElementById('nbInvMsg').textContent = 'Escribe el nombre de la persona.'; return; }
+      try {
+        const r = await llamar('invitar', { nombre });
+        inp.value = '';
+        mostrarInvitacion('nbInvMsg', r.codigo, r.nombre);
+        await pintarPersonas();
+      } catch (err) { document.getElementById('nbInvMsg').textContent = err.message; }
+    });
     on('nbCrear', async () => {
       try {
         const r = await llamar('crear_codigo');
         estado = await revisarEstado();
-        const enlace = location.origin + location.pathname + '#equipo=' + r.codigo;
-        const texto = 'Hola, te invito al Seguimiento de Recibo del CEDI. Abre este enlace en tu celular o PC y quedas conectado a las planillas del equipo (no lo compartas fuera del equipo):\n' + enlace +
-          '\nSi te pide código de equipo: ' + r.codigo + '\nDespués ve a Ajustes y escribe tu nombre en «Auditor de este equipo».';
-        const msg = document.getElementById('nbMsg');
-        msg.innerHTML = '<b>Código de equipo: ' + esc(r.codigo) + '</b> · se muestra una sola vez. Envíaselo solo a los conferencistas.' +
-          '<div class="actions"><a class="btn primary" id="nbWa" target="_blank" rel="noopener">Invitar por WhatsApp</a>' +
-          '<button class="btn" id="nbCopiar" type="button">Copiar invitación</button></div>';
-        document.getElementById('nbWa').href = 'https://wa.me/?text=' + encodeURIComponent(texto);
-        document.getElementById('nbCopiar').addEventListener('click', async () => {
-          try { await navigator.clipboard.writeText(texto); document.getElementById('nbCopiar').textContent = 'Copiada ✓'; }
-          catch { window.prompt('Copia la invitación:', texto); }
-        });
+        mostrarInvitacion('nbMsg', r.codigo, '');
       } catch (err) { aviso(err.message); }
     });
-    on('nbQuitar', async () => { try { await llamar('quitar_codigo'); estado = await revisarEstado(); await pintarTarjeta(); aviso('Código quitado.'); } catch (err) { aviso(err.message); } });
+    on('nbQuitar', async () => { try { await llamar('quitar_codigo'); estado = await revisarEstado(); await pintarTarjeta(); aviso('Código general quitado: ahora solo entran las personas de la lista.'); } catch (err) { aviso(err.message); } });
     on('nbSalir', () => { ls.set('sesion', null); location.reload(); });
     on('nbOlvidar', () => { ls.set('equipo', ''); location.reload(); });
   }
