@@ -223,11 +223,41 @@
     },
   };
 
+  // ---------- Google Drive (puente publicado como aplicación web de Google Apps Script) ----------
+  // La dirección del puente se guarda en la nube del equipo (config/puente → { url }), así se cambia sin tocar la página.
+  function urlPuente() {
+    const c = cache.get('config/puente');
+    const u = c && !c.borrado && c.datos && c.datos.url;
+    return typeof u === 'string' && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u) ? u : '';
+  }
+  const DRIVE_PUENTE = {
+    async callTool(_servidor, tool, input) {
+      const url = urlPuente();
+      if (!url) throw { code: 'server_not_connected', message: 'Sin puente de Drive' };
+      const cuerpo = JSON.stringify({ tool, input, equipo: ls.get('equipo', ''), token: (await tokenVigente()) || '' });
+      let r;
+      // text/plain: el navegador no hace consulta previa y Google la acepta
+      try { r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo, redirect: 'follow' }); }
+      catch { throw { code: 'server_unavailable', message: 'Sin conexión con Google Drive' }; }
+      if (!r.ok) throw { code: r.status === 429 ? 'rate_limited' : 'upstream_error', message: 'Google respondió ' + r.status };
+      const d = await r.json().catch(() => null);
+      if (!d) throw { code: 'upstream_error', message: 'Respuesta inválida de Google Drive' };
+      if (d.error) throw { code: d.error.code || 'tool_error', message: d.error.message || '' };
+      return { payload: d.payload || {} };
+    },
+  };
+
   // ---------- lo que la página pide ----------
   window.entorno = {
     async use(nombre) {
       if (nombre === 'downloads') return DESCARGAS;
-      if (nombre !== 'db') return null; // sin lectura automática de fotos ni Google Drive en esta versión
+      if (nombre === 'mcp') {
+        const e = estado || await revisarEstado();
+        if (!(e.luis || e.equipo)) return null;
+        await primeraCarga;
+        return urlPuente() ? DRIVE_PUENTE : null;
+      }
+      if (nombre !== 'db') return null;
       const e = await revisarEstado();
       if (!(e.luis || e.equipo)) return null;
       if (!e.offline) primeraCarga = traerCambios().catch(() => {});

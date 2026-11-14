@@ -12,7 +12,7 @@ const CORS = {
 };
 const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const COLECCIONES = ["planillas", "articulos", "config", "fotos"];
+const COLECCIONES = ["planillas", "articulos", "config", "fotos", "drivefotos"];
 const RE_ID = /^[A-Za-z0-9_.:-]{1,80}$/;
 const MAX_DOC = 400_000; // bytes por documento (las fotos van comprimidas)
 

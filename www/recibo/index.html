@@ -407,6 +407,18 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
       <p class="note exRes" id="exRes"></p>
       <div class="actions"><button type="button" class="btn primary" id="exXls">Descargar Excel</button><button type="button" class="btn" id="exPdf">Descargar PDF</button></div>
     </section>
+    <section class="card" id="drvCard">
+      <div class="rowh"><h2>Google Drive</h2></div>
+      <p class="note" style="margin:0">La carpeta <b>Seguimiento de Recibo</b> de Drive tiene: el <b>Historial completo</b> (se actualiza una vez al día o a mano), la carpeta <b>Planillas (formato físico)</b> con el PDF de cada planilla y su fecha, la carpeta <b>Semanas</b> con un Excel por semana y la carpeta <b>Fotos</b>, donde cada foto se sube una sola vez. Quien tenga el enlace abre y descarga lo que necesite.</p>
+      <p class="drvTxt" id="drvTxt" role="status"></p>
+      <div class="actions">
+        <button type="button" class="btn primary" id="drvSubir">Actualizar Drive ahora</button>
+        <a class="btn" id="drvAbrir" href="https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0" target="_blank" rel="noopener">Abrir carpeta</a>
+        <a class="btn" id="drvWa" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+      </div>
+      <div class="drvLink"><input id="drvLinkIn" readonly value="https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0" aria-label="Enlace de la carpeta"><button type="button" class="btn sm" id="drvCopiar">Copiar enlace</button></div>
+      <label class="drvAuto"><input type="checkbox" id="drvAuto"> Actualizar Drive solo, desde este equipo, 2 minutos después de cada cambio</label>
+    </section>
     <div class="kpis" id="kpis"></div>
     <section class="card"><h2>Hallazgos</h2><ul class="hall" id="tbHall"></ul></section>
     <section class="card"><h2>Productos críticos</h2><p class="note">Conferencias y novedades de las categorías marcadas como críticas (se cambian en Ajustes).</p><div class="tbl" id="tbCrit"></div></section>
@@ -2598,15 +2610,16 @@ function initExport(){
 //   Fotos/Semana 2026-S46/*.jpg → cada foto se sube una sola vez
 const DRIVE = {server:'Google Drive', folderId:'1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', link:'https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', titulo:'Seguimiento de Recibo - Historial completo.xlsx'};
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', FOLDER_MIME = 'application/vnd.google-apps.folder';
-const DV = {mcp:null, listo:false, busy:false, again:false, timer:null, info:null, fotos:new Map(), msg:'', msgTipo:'', paso:'', fileArgs:null, auto: false};
+const DV = {mcp:null, listo:false, busy:false, again:false, timer:null, info:null, fotos:new Map(), msg:'', msgTipo:'', paso:'', fileArgs:null, auto: !!lsGet('rc_driveAuto', false)};
 const horaTxt = ms => { const d = new Date(ms); return fmtD(d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
 function ultimoCambio(){ let m = 0; for (const p of activas()) m = Math.max(m, p.actualizado || 0); return m; }
 function semTitulo(sem, fecha){ const r = semRango(fecha).replace(/\//g, '-').replace('–', ' al '); return 'Semana ' + sem + (r ? ' (' + r + ')' : ''); }
 function driveErr(e){
   const c = e && e.code;
   if (c === 'needs_reauth') return 'Google Drive pide volver a conectarse.';
+  if (c === 'sin_acceso') return 'Este equipo no tiene acceso a la nube del equipo. Escribe el código en Ajustes → Nube del equipo.';
   if (c === 'server_not_connected' || c === 'selection_required') return 'Google Drive no está conectado.';
-  if (c === 'not_in_manifest' || c === 'approval_required' || c === 'consent_required') return 'Falta tu permiso para que esta página use Google Drive. Toca «Actualizar Drive ahora» y acepta el aviso.';
+  if (c === 'not_in_manifest' || c === 'approval_required' || c === 'consent_required') return 'Falta el permiso de Google para el puente de Drive.';
   if (c === 'not_granted' || c === 'capability_disabled' || c === 'capability_removed') return 'Esta versión no usa Google Drive.';
   if (c === 'blocked_by_policy') return 'La política de la cuenta no deja usar Google Drive desde páginas.' + (e.message ? ' [' + (e.tool || '') + ' · ' + String(e.message).slice(0, 220) + ']' : '');
   if (c === 'server_unavailable' || c === 'upstream_error' || c === 'rate_limited') return 'Google Drive no respondió. Lo ya subido quedó guardado; vuelve a intentar en un momento.';
@@ -2622,7 +2635,7 @@ function renderDrive(){
   if (DV.busy) txt = DV.paso || 'Subiendo a Drive…';
   else if (DV.msg) { txt = DV.msg; tipo = DV.msgTipo || 'bad'; }
   else if (!DV.listo) txt = 'Comprobando Google Drive…';
-  else if (!DV.mcp) { txt = 'Esta versión no usa Google Drive.'; tipo = 'bad'; }
+  else if (!DV.mcp) { txt = S.db ? 'Google Drive todavía no está conectado. Cuando Luis lo active, vuelve a abrir la página.' : 'Para usar Google Drive, conecta este equipo a la nube del equipo en Ajustes.'; tipo = 'bad'; }
   else if (ult) { const pend = cambio > ult + 1000; txt = 'Última subida: ' + horaTxt(ult) + (h && h.subido ? ' · Historial completo del ' + horaTxt(h.subido) : '') + ' · ' + DV.fotos.size + ' fotos en Drive.' + (pend ? ' Hay cambios que todavía no están en Drive.' : ' Está al día.'); tipo = pend ? '' : 'ok'; }
   else txt = 'Todavía no se ha subido nada. Toca «Actualizar Drive ahora».';
   t.textContent = txt; t.className = 'drvTxt' + (tipo ? ' ' + tipo : '');
@@ -2641,7 +2654,7 @@ async function dCarpeta(nombre, parentId){
   if (!r.id) throw {code: 'tool_error', message: 'No se pudo crear la carpeta ' + nombre};
   return r.id;
 }
-const LIMITE_LINEA = 700000;   // bytes del archivo; en base64 queda por debajo de 1 MiB por llamada
+const LIMITE_LINEA = 20000000;   // bytes del archivo; el puente de Drive recibe hasta unos 50 MB por llamada
 async function dSubirXlsx(titulo, parentId, blob, mime){
   if (blob.size > LIMITE_LINEA) throw {code: 'muy_grande'};
   const d = await blobToDataURL(blob);
