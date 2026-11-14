@@ -1,0 +1,14 @@
+{
+  "name": "paletizado-diagnostico-ia",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Función de Azure: diagnóstico de Paletizado 3D con Azure OpenAI (la clave no sale de Azure)",
+  "main": "src/functions/*.js",
+  "scripts": {
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.0"
+  }
+}

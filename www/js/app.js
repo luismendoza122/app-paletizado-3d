@@ -12,6 +12,7 @@ import { BIBLIOTECA } from './biblioteca.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
 import { generarLayout, mezclar, estadoDe, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { diagnostico, responder } from './agente.js';
+import { resumenParaIA, pedirDiagnosticoIA, direccionValida } from './ia.js';
 import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
 
 export const REPO = 'luismendoza122/app-paletizado-3d';
@@ -34,6 +35,8 @@ const estado = {
   conflictos: leer('conflictos', []),    // posiciones que otro cambió al mismo tiempo
   borradas: leer('borradas', {}),        // posiciones agregadas que se borraron: { codigo: { version, pendiente } }
   conocimiento: leer('conocimiento', []),// aprendizaje diario del agente
+  iaAzure: leer('iaAzure', null),        // { url, codigo } de la Función de Azure (solo en este equipo)
+  diagIA: null,                          // última respuesta de la IA de Azure
   conSesion: !!leer('sesion', null),     // Luis inició sesión
   sincronizando: false,
 };
@@ -438,6 +441,12 @@ const pantallas = {
       ${d.mejoras.length ? `<h3>Mejoras sugeridas</h3><ol class="mejoras">${d.mejoras.map((m) => `<li>${esc(m.texto)}</li>`).join('')}</ol>` : ''}
     </section>
     <section class="tarjeta">
+      <h2>Diagnóstico con IA (Azure)</h2>
+      <p class="nota">Usa Azure OpenAI dentro de la cuenta de Azure del CEDI: Microsoft no usa estos datos para entrenar modelos. Solo se envía un resumen (conteos, % de orden por pasillo, códigos de posición y clase); <b>no</b> se envían nombres de artículos, códigos de artículo, pesos ni medidas.</p>
+      ${estado.iaAzure?.url ? `<button class="boton" id="diagIA">Pedir diagnóstico a la IA</button>` : '<div class="aviso">Falta configurar la IA de Azure en <b>Ajustes</b>. Mientras tanto, el agente de arriba funciona sin internet.</div>'}
+      <div id="resultadoIA">${estado.diagIA ? `<div class="msg agente">${estado.diagIA.texto.split(/\n+/).map((l) => `<p>${esc(l)}</p>`).join('')}${estado.diagIA.modelo ? `<p class="nota">Modelo: ${esc(estado.diagIA.modelo)}</p>` : ''}</div>` : ''}</div>
+    </section>
+    <section class="tarjeta">
       <h2>Pregúntale al agente</h2>
       <div class="rapidas">${['¿Cómo voy?', '¿Qué mejoras hay?', '¿Qué movimientos hago primero?', '¿Qué aprendiste hoy?', '¿Cómo agrego o borro una posición?', '¿Qué significa BASE, MEDIO y TOPE?']
         .map((q) => `<button class="boton sec" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
@@ -551,6 +560,13 @@ const pantallas = {
         ${campo('aV', 'Voladizo permitido (mm)', p.voladizoMax)}${campo('aS', 'Apoyo mínimo de cada caja (%)', Math.round(r.soporteMinimo * 100))}
       </div>
       <button class="boton" id="guardarAjustes">Guardar</button>
+    </section>
+    <section class="tarjeta">
+      <h2>IA de diagnóstico (Azure)</h2>
+      <p class="nota">Pega la dirección de la Función de Azure y su código de acceso (los da Luis). Se guardan solo en este equipo. La clave de Azure OpenAI nunca va en el celular.</p>
+      <label>Dirección de la función<input id="iaUrl" type="url" autocomplete="off" placeholder="https://….azurewebsites.net/api/diagnostico" value="${esc(estado.iaAzure?.url || '')}"></label>
+      <label>Código de acceso<input id="iaCodigo" type="password" autocomplete="off" placeholder="${estado.iaAzure?.codigo ? 'Guardado (escribe uno nuevo para cambiarlo)' : 'Código de la función'}"></label>
+      <button class="boton" id="guardarIA">Guardar IA</button> ${estado.iaAzure ? '<button class="boton sec" id="quitarIA">Quitar IA de este equipo</button>' : ''}
     </section>
     <section class="tarjeta">
       <h2>Datos del equipo</h2>
@@ -981,6 +997,18 @@ function conectar(tab) {
     $('#formChat').addEventListener('submit', (e) => { e.preventDefault(); preguntar($('#pregunta').value); });
     $('#diagExcel').addEventListener('click', () => exportarExcel('diagnostico', ['DIAGNOSTICO', 'ARTICULOS', 'REUBICACION']));
     $('#diagCopiar').addEventListener('click', () => copiar(textoDiagnostico(diagnostico(contexto()))));
+    $('#diagIA')?.addEventListener('click', async (e) => {
+      if (!enLinea()) { notificar('Sin internet: usa el diagnóstico de arriba (funciona sin conexión).', 'error'); return; }
+      const boton = e.currentTarget;
+      boton.disabled = true; boton.textContent = 'Consultando a la IA…';
+      try {
+        estado.diagIA = await pedirDiagnosticoIA(resumenParaIA(contexto()), estado.iaAzure);
+        mostrar('agente');
+      } catch (err) {
+        notificar(err.message, 'error');
+        boton.disabled = false; boton.textContent = 'Pedir diagnóstico a la IA';
+      }
+    });
   }
   if (tab === 'ubicaciones') {
     $('#fZona').addEventListener('change', (e) => { estado.filtroZona = e.target.value; estado.filtroPasillo = ''; mostrar('ubicaciones'); });
@@ -1043,6 +1071,22 @@ function conectar(tab) {
       estado.paletConfirmado = true;
       guardar('palet', estado.palet); guardar('reglas', estado.reglas); guardar('paletConfirmado', true);
       notificar('Guardado');
+    });
+    $('#guardarIA').addEventListener('click', () => {
+      const url = $('#iaUrl').value.trim();
+      const codigo = $('#iaCodigo').value.trim() || estado.iaAzure?.codigo || '';
+      if (!direccionValida(url)) { notificar('La dirección debe empezar por https:// y ser de Azure (…azurewebsites.net).', 'error'); return; }
+      if (!codigo) { notificar('Falta el código de acceso.', 'error'); return; }
+      estado.iaAzure = { url, codigo };
+      guardar('iaAzure', estado.iaAzure);
+      notificar('IA de Azure guardada');
+      mostrar('ajustes');
+    });
+    $('#quitarIA')?.addEventListener('click', () => {
+      estado.iaAzure = null; estado.diagIA = null;
+      guardar('iaAzure', null);
+      notificar('IA quitada de este equipo');
+      mostrar('ajustes');
     });
     $('#borrar').addEventListener('click', async () => {
       if (!(await confirmar('¿Borrar todos los datos tomados y los pedidos de este equipo? Primero cópialos a la hoja si los necesitas.'))) return;

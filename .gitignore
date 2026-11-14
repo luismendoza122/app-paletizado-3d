@@ -8,3 +8,4 @@ android/
 .DS_Store
 artefacto/
 salida/
+local.settings.json

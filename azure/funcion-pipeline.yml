@@ -1,0 +1,46 @@
+# Azure DevOps: publica la Función de IA (azure/diagnostico-ia) en tu Function App.
+# Es un pipeline aparte del de la APK (azure-pipelines.yml). Guía: azure/GUIA-AZURE.md, Paso C.
+#
+# Antes de correrlo, crea UNA vez en dev.azure.com:
+#   - Conexión de servicio (Project settings → Service connections) tipo Azure Resource Manager: "azure-paletizado".
+#   - Variable del pipeline FUNCION_APP = nombre de tu Function App (ej. paletizado-ia-luis).
+# Las claves de Azure OpenAI NO van aquí: se ponen en las variables de entorno de la Function App.
+
+trigger: none          # solo se ejecuta cuando tú le das "Ejecutar"
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - task: NodeTool@0
+    displayName: Node.js 22
+    inputs:
+      versionSpec: '22.x'
+
+  - script: |
+      npm install
+      npm test
+    displayName: Pruebas (incluye el filtro de datos de la IA)
+
+  - script: npm install --omit=dev
+    workingDirectory: azure/diagnostico-ia
+    displayName: Bibliotecas de la función
+
+  - task: ArchiveFiles@2
+    displayName: Empaquetar la función
+    inputs:
+      rootFolderOrFile: azure/diagnostico-ia
+      includeRootFolder: false
+      archiveType: zip
+      archiveFile: $(Build.ArtifactStagingDirectory)/funcion.zip
+
+  - task: AzureFunctionApp@2
+    displayName: Publicar en Azure
+    inputs:
+      connectedServiceNameARM: azure-paletizado
+      appType: functionAppLinux
+      isFlexConsumption: true   # plan "Consumo flexible" (Flex Consumption)
+      appName: $(FUNCION_APP)
+      package: $(Build.ArtifactStagingDirectory)/funcion.zip

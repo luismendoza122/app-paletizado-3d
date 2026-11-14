@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "",
+    "AZURE_OPENAI_ENDPOINT": "https://TU-RECURSO.openai.azure.com",
+    "AZURE_OPENAI_KEY": "pega-aqui-la-clave-SOLO-en-tu-PC-nunca-en-git",
+    "AZURE_OPENAI_DEPLOYMENT": "diagnostico-paletizado",
+    "CORS_PERMITIDOS": "https://localhost,capacitor://localhost"
+  }
+}

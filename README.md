@@ -7,6 +7,13 @@ App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la r
 - **APK de Android:** se compila sola en GitHub cada vez que se sube un cambio a `main`.
   Descarga: `https://github.com/luismendoza122/app-paletizado-3d/releases/latest/download/paletizado-3d.apk`
 
+## Azure (APK e IA protegida)
+- `azure-pipelines.yml`: compila la APK en **Azure DevOps** (máquina Windows, mismo script `scripts/compilar-apk.ps1`).
+- `azure/funcion-pipeline.yml`: publica la Función de IA en tu cuenta de Azure.
+- `azure/diagnostico-ia/`: **Función de Azure** que pide el diagnóstico a **Azure OpenAI**. La clave queda en Azure, nunca en la APK.
+- La app envía solo un resumen (conteos, % de orden, códigos de posición y clase), sin nombres, pesos ni medidas de artículos.
+- Paso a paso: [`azure/GUIA-AZURE.md`](azure/GUIA-AZURE.md). En la app: **Ajustes → IA de diagnóstico (Azure)** y luego **Agente → Pedir diagnóstico a la IA**.
+
 ## Qué hace (versión 0.2)
 | Pantalla | Para qué |
 |---|---|
