@@ -69,6 +69,13 @@ footer{color:var(--gris);font-size:12px;text-align:center;padding:4px 16px 24px}
     <p class="msg" id="msgNueva" role="status"></p>
   </section>
 
+  <section class="tarjeta" id="cajaChats" hidden>
+    <h2>Lecciones recogidas de tus chats</h2>
+    <p class="nota" id="txtChats"></p>
+    <div class="botones"><button class="prim" id="btnChats" type="button">Guardar en el cuaderno</button></div>
+    <p class="msg" id="msgChats" role="status"></p>
+  </section>
+
   <section class="tarjeta" id="cajaEntrar" hidden>
     <h2>Entrar</h2>
     <p class="nota">Solo tú puedes guardar lecciones. Usa la misma cuenta de la Central que en Seguimiento de Recibo (en este navegador se pide una sola vez).</p>
@@ -234,6 +241,27 @@ footer{color:var(--gris);font-size:12px;text-align:center;padding:4px 16px 24px}
   });
   $('btnSalir').addEventListener('click', () => { ls.set('sesion', null); location.reload(); });
 
+  // Lecciones que trae la revisión diaria desde los chats de THEMENDO (pasan en window.name, en la misma pestaña)
+  let deChats = [];
+  try {
+    if (String(window.name || '').startsWith('THEMENDO_LECCIONES:')) {
+      const v = JSON.parse(window.name.slice('THEMENDO_LECCIONES:'.length));
+      if (Array.isArray(v)) deChats = v.filter((x) => typeof x === 'string' && x.length >= 10 && x.length <= 4000).slice(0, 200);
+    }
+  } catch { /* nada */ }
+  window.name = '';
+  if (deChats.length) {
+    $('cajaChats').hidden = false;
+    $('txtChats').textContent = 'Llegaron ' + deChats.length + ' lecciones de tus chats con THEMENDO. Las repetidas no se vuelven a guardar.';
+    $('btnChats').addEventListener('click', async () => {
+      $('btnChats').disabled = true;
+      let nuevas = 0, repetidas = 0, fallo = '';
+      for (const l of deChats) { try { const r = await llamar('guardar', { texto: l, origen: 'chats' }); r.repetida ? repetidas++ : nuevas++; } catch (e) { fallo = e.message; if (e.status === 401) { mostrarEntrar(); break; } } }
+      $('msgChats').className = 'msg ' + (fallo ? 'mal' : 'ok');
+      $('msgChats').textContent = 'RESULTADO: ' + nuevas + ' nuevas · ' + repetidas + ' ya estaban' + (fallo ? ' · error: ' + fallo : '');
+      await pintarLista();
+    });
+  }
   const recibida = leccionDelEnlace();
   if (recibida) {
     $('cajaNueva').hidden = false; $('txtNueva').value = recibida;
