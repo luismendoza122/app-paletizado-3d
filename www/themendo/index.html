@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Entorno THEMENDO</title>
+<meta name="theme-color" content="#16324f">
+<link rel="icon" href="../icons/icono.svg" type="image/svg+xml">
+<style>
+:root{
+  --fondo:#f4f6f8; --tarjeta:#fff; --texto:#1b2430; --gris:#5b6775; --borde:#d8dee6;
+  --azul:#16324f; --azul2:#2f6fdd; --verde:#2a9d5c; --ambar:#c98a16; --suave:#eef3fb;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fondo:#0f1620; --tarjeta:#17212d; --texto:#e6edf5; --gris:#9aa8b8; --borde:#2a3746;
+    --azul:#0d2238; --azul2:#6c9cf0; --verde:#4cc283; --ambar:#e0a63a; --suave:#1c2a3b;
+  }
+}
+:root[data-theme="dark"]{
+  --fondo:#0f1620; --tarjeta:#17212d; --texto:#e6edf5; --gris:#9aa8b8; --borde:#2a3746;
+  --azul:#0d2238; --azul2:#6c9cf0; --verde:#4cc283; --ambar:#e0a63a; --suave:#1c2a3b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:16px;line-height:1.45}
+header{background:var(--azul);color:#fff;padding:20px 16px 18px;padding-top:max(20px,env(safe-area-inset-top))}
+.ancho{max-width:960px;margin:0 auto}
+header h1{margin:0;font-size:24px;letter-spacing:.3px}
+header p{margin:4px 0 14px;opacity:.85;font-size:14px}
+.boton{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 18px;border-radius:10px;background:var(--azul2);color:#fff;font-weight:600;text-decoration:none;border:0}
+header .boton{background:#fff;color:#16324f}
+main{padding:16px;display:flex;flex-direction:column;gap:18px}
+h2{font-size:17px;margin:0 0 10px;color:var(--texto)}
+.nota{color:var(--gris);font-size:14px;margin:0 0 10px}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.tarjeta{background:var(--tarjeta);border:1px solid var(--borde);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tarjeta h3{margin:0;font-size:16px}
+.tarjeta p{margin:0;color:var(--gris);font-size:14px}
+.tarjeta .boton{align-self:flex-start;margin-top:4px}
+.etq{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--suave);color:var(--azul2);align-self:flex-start}
+.etq.ok{color:var(--verde)} .etq.pend{color:var(--ambar)}
+ul.lista{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+ul.lista li{background:var(--tarjeta);border:1px solid var(--borde);border-radius:10px;padding:10px 12px}
+ul.lista b{display:block;font-size:15px}
+ul.lista span{color:var(--gris);font-size:14px}
+a.enlace{color:var(--azul2);font-weight:600}
+ol.pasos{margin:0;padding-left:20px;color:var(--texto)} ol.pasos li{margin-bottom:6px}
+footer{color:var(--gris);font-size:12px;text-align:center;padding:10px 16px 24px}
+</style>
+</head>
+<body>
+<header>
+  <div class="ancho">
+    <h1>Entorno THEMENDO</h1>
+    <p>Asistente de Luis Mendoza en Microsoft 365 Copilot: artefactos, habilidades, fuentes y acciones del CEDI.</p>
+    <a class="boton" href="https://m365.cloud.microsoft/chat/agent/T_0beb0366-1b5b-39eb-d032-63302b709bc4.357c5821-89ff-4709-8f75-b75d87754475.gpt.a7b3a646-f2a2-4c8d-a566-90c7e1e2e491" target="_blank" rel="noopener">Abrir THEMENDO en Copilot</a>
+  </div>
+</header>
+
+<main class="ancho">
+  <section>
+    <h2>Artefactos</h2>
+    <p class="nota">Apps listas para usar en el celular o el PC. Funcionan sin señal y guardan en el equipo; la información compartida va a la nube del equipo.</p>
+    <div class="rejilla">
+      <article class="tarjeta">
+        <span class="etq ok">Recibo</span>
+        <h3>Seguimiento de Recibo</h3>
+        <p>Planillas de conferencias de recibo: verificación por etiqueta, fotos de evidencia, catálogo de artículos, tablero de novedades y descarga en Excel o PDF.</p>
+        <a class="boton" href="../recibo/">Abrir</a>
+      </article>
+      <article class="tarjeta">
+        <span class="etq ok">Paletizado</span>
+        <h3>Paletizado 3D – CEDI ATS R10</h3>
+        <p>Toma de datos por posición, clase BASE / MEDIO / TOPE, reubicación por pasillo, pedidos en 3D, cálculo de palet y tareas por enlace.</p>
+        <a class="boton" href="../">Abrir</a>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Habilidades de THEMENDO</h2>
+    <p class="nota">Están cargadas en el agente. Se activan solas según lo que preguntes.</p>
+    <ul class="lista">
+      <li><b>Biblioteca y aprendizaje</b><span>Busca primero en lo aprendido, deja una lección al terminar cada tarea, práctica con verificación y examen fijo.</span></li>
+      <li><b>Logística CEDI: inventarios, slotting y picking</b><span>Conteos cíclicos, conciliación, stock de seguridad, reubicación, maestro de ubicaciones y rutas en S.</span></li>
+      <li><b>Analista de datos senior y Power BI</b><span>OTIF, fill rate, quiebres, mermas, productividad, DAX y tableros.</span></li>
+      <li><b>Excel, Office y Python</b><span>Fórmulas, macros, Power Query, Word y scripts de datos.</span></li>
+      <li><b>Microsoft: Copilot, Azure y cuenta premium</b><span>Agentes, Power Automate, Azure y cómo revisar licencias para enlazar el PC, SAP y WPMS.</span></li>
+      <li><b>Automatización del PC y Power Automate</b><span>Pasos y flujos de Power Automate Desktop para apps del PC.</span></li>
+      <li><b>Programación, web y apps</b><span>Método profesional, páginas, APK, bases de datos y publicación.</span></li>
+      <li><b>IA, proyectos, redacción y estudio</b><span>Prompts, proyectos, correos, inglés e investigación con fuentes.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Fuentes que consulta</h2>
+    <p class="nota">Orden para responder rápido: sus habilidades y lecciones → estas fuentes oficiales → lo que sabe Copilot → búsqueda en la web.</p>
+    <ul class="lista">
+      <li><b><a class="enlace" href="https://learn.microsoft.com/es-es/" target="_blank" rel="noopener">Microsoft Learn</a></b><span>Excel, Power Automate, Power BI, Copilot, Azure, Office Scripts.</span></li>
+      <li><b><a class="enlace" href="https://support.microsoft.com/es-es" target="_blank" rel="noopener">Soporte de Microsoft</a></b><span>Ayuda de Office 365, Teams, Outlook y Windows.</span></li>
+      <li><b><a class="enlace" href="https://help.sap.com" target="_blank" rel="noopener">SAP Help Portal</a></b><span>Transacciones y módulos de SAP.</span></li>
+      <li><b>WPMS</b><span>Sistema interno de la empresa: THEMENDO usa los manuales o pantallas que le compartas.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Conectores y acciones</h2>
+    <div class="rejilla">
+      <article class="tarjeta">
+        <span class="etq ok">Activo</span>
+        <h3>Nube del equipo</h3>
+        <p>Recibo comparte planillas entre equipos con el código de equipo que crea Luis en Ajustes → Nube del equipo.</p>
+      </article>
+      <article class="tarjeta">
+        <span class="etq ok">Activo</span>
+        <h3>Power Automate Desktop (manual)</h3>
+        <p>THEMENDO arma el flujo paso a paso y tú lo ejecutas en el PC. Empieza en modo piloto, solo lectura.</p>
+        <a class="boton" href="https://make.powerautomate.com" target="_blank" rel="noopener">Abrir Power Automate</a>
+      </article>
+      <article class="tarjeta">
+        <span class="etq pend">Requiere TI</span>
+        <h3>Acciones automáticas en el PC, SAP y WPMS</h3>
+        <p>Que THEMENDO ejecute flujos solo necesita Copilot Studio con créditos, licencia Power Automate Premium y el PC registrado. Pregúntale a THEMENDO "¿cómo sé si mi cuenta es premium?".</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cómo aprende</h2>
+    <ol class="pasos">
+      <li>Al terminar una tarea, THEMENDO escribe una <b>LECCIÓN</b> (pedido, qué funcionó, error, para la próxima).</li>
+      <li>Si sirve, guárdala en tu archivo <b>lecciones.md</b>.</li>
+      <li>Cada semana dile <b>"Actualiza tu biblioteca"</b> y adjunta el archivo: te devuelve la habilidad actualizada para cargarla.</li>
+      <li>Después de cada cambio, haz el <b>examen fijo</b> en un chat nuevo. Si la nota baja, vuelve a la versión anterior.</li>
+    </ol>
+  </section>
+</main>
+<footer>Entorno THEMENDO · Luis Mendoza · CEDI ATS R10 Valledupar</footer>
+</body>
+</html>

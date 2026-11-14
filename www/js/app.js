@@ -1057,7 +1057,7 @@ document.querySelectorAll('#pestanas button').forEach((b) => b.addEventListener(
 recalcular();
 mostrar(pestanaActual);
 alIniciar();
-// Página web sin internet (no aplica dentro de la APK ni de claude.ai)
+// Página web sin internet (no aplica dentro de la APK)
 try {
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor && location.hostname.endsWith('github.io')) navigator.serviceWorker.register('sw.js');
 } catch { /* sin soporte */ }

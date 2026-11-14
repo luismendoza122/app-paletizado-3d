@@ -3,7 +3,9 @@
 App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la ruta de picking, el palet salga bien armado: pesado abajo, delicado arriba. Calcula y muestra los palets en 3D.
 
 - **Web:** se publica en Vercel.
-- **Página en claude.ai (artefacto):** https://claude.ai/artifact/8zqDZDYTg5befBxABNSscH (slug 40c31478-bdde-44ff-80f0-c6b66dc1553e). Se actualiza con `npm run artefacto` y volviendo a publicar la carpeta `artefacto/`.
+- **Página web:** https://luismendoza122.github.io/app-paletizado-3d/ (GitHub Pages; se publica sola con cada cambio en `main`).
+- **Entorno THEMENDO:** https://luismendoza122.github.io/app-paletizado-3d/themendo/ — artefactos, habilidades y fuentes del agente THEMENDO en Microsoft 365 Copilot.
+- **Seguimiento de Recibo:** https://luismendoza122.github.io/app-paletizado-3d/recibo/ — planillas de conferencias de recibo con nube del equipo (función `recibo` de Supabase).
 - **APK de Android:** se compila sola en GitHub cada vez que se sube un cambio a `main`.
   Descarga: `https://github.com/luismendoza122/app-paletizado-3d/releases/latest/download/paletizado-3d.apk`
 
@@ -45,9 +47,12 @@ Abre http://localhost:5173
 ## Estructura
 ```
 www/                 app (HTML, CSS, JS sin frameworks)
+  recibo/            Seguimiento de Recibo (index.html + entorno.js: nube del equipo y descargas)
+  themendo/          página del Entorno THEMENDO
   js/motor/          cálculo: artículo, índice de arrume, palet de un artículo, orden de ruta, reubicación, simulación
   js/datos/          lectura de Excel/CSV y guardado en el equipo
   js/visor.js        3D (Three.js) y vista por capas
+supabase/functions/  paletizado (posiciones y tareas) y recibo (planillas, artículos, ajustes y fotos)
 scripts/             preparar.js (copia Three.js y SheetJS a www/vendor) y servidor local
 test/                pruebas del motor (npm test)
 ```
