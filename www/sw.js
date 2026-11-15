@@ -1,5 +1,5 @@
 // Permite usar la página sin internet (después de abrirla una vez con conexión).
-const CACHE = 'paletizado-0.8.2';
+const CACHE = 'paletizado-0.8.3';
 const BASICOS = ['./', './index.html', './css/estilos.css', './js/app.js', './js/agente.js', './js/exportar.js', './js/biblioteca.js', './js/visor.js',
   './js/datos/almacen.js', './js/datos/importar.js', './js/datos/layout.js', './js/datos/nube.js',
   './js/motor/articulo.js', './js/motor/indice.js', './js/motor/mono.js', './js/motor/reubicacion.js', './js/motor/secuencia.js', './js/motor/simulacion.js',
@@ -11,7 +11,8 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(BASICOS.map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  // Solo borra versiones viejas de Paletizado: las demás apps de esta dirección (Inventario) tienen sus propias copias
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('paletizado-') && k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
