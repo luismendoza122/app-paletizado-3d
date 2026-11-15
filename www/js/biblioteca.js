@@ -52,7 +52,7 @@ export const BIBLIOTECA = [
     'En "Mis sugerencias" ves el estado (nueva, en revisión, aprobada, hecha o descartada) y la respuesta de la administración. Toca "Ver respuestas" para actualizar.'] },
   { tema: 'Administración', titulo: 'Entrar como administrador', claves: ['administrador', 'admin', 'codigo de administrador', 'entrar', 'permisos'], texto: [
     'En Tareas → "Entrar como administrador" escribe el código personal que te entregaron (XXXX-XXXX-XXXX). Con él puedes crear y anular tareas, ver los usuarios, bajar y editar la información de todos, publicar los ajustes del palet, responder sugerencias y enseñar al agente.',
-    'El código es personal: no lo compartas. Si lo quitan, deja de funcionar de inmediato. Desde la app no se puede cambiar el código del programa.'] },
+    'El código es personal: sirve en un solo celular (el primero donde se usa) y tiene fecha de vencimiento. Si te lo quitan o vence, deja de funcionar y hay que pedir uno nuevo. Desde la app no se puede cambiar el código del programa.'] },
   { tema: 'Administración', titulo: 'Enseñar al agente', claves: ['ensenar', 'leccion', 'aprenda', 'aprender', 'no supo', 'olvidar'], texto: [
     'Cuando el agente no sabe algo, la pregunta le llega a la administración. En la pestaña Agente → "Enseñar al agente" el administrador escribe la respuesta y toca "Enseñar": la lección llega a todos los celulares.',
     'También se puede escribir una lección nueva, convertir la respuesta de una sugerencia en lección, u "Olvidar" una que esté mal. Además, cada madrugada el agente recibe una lección nueva de logística (aprendizaje diario).'] },

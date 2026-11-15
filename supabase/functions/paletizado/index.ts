@@ -52,15 +52,20 @@ async function sha256(t: string) {
 const limpiarCodigo = (c: unknown) => String(c ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 // ¿Quién hace la petición? propietario (oculto), administrador (código personal) o nadie.
-async function quienEs(req: Request): Promise<{ rol: "propietario" | "admin" | ""; nombre: string; id?: string }> {
+// El código de administrador sirve en un solo celular (el primero que lo usa) y hasta su fecha de vencimiento.
+async function quienEs(req: Request, dispositivo: string): Promise<{ rol: "propietario" | "admin" | ""; nombre: string; id?: string; motivo?: string }> {
   if (await esPropietario(req)) return { rol: "propietario", nombre: "Administración" };
   const c = limpiarCodigo(req.headers.get("x-admin"));
   if (c.length < 10) return { rol: "", nombre: "" };
-  const { data: a } = await sb.from("paletizado_admins").select("id,nombre,ultimo_uso").eq("hash", await sha256("admin:" + c)).eq("quitado", false).maybeSingle();
-  if (!a) return { rol: "", nombre: "" };
-  if (!a.ultimo_uso || Date.now() - Date.parse(a.ultimo_uso) > 300_000) {
-    await sb.from("paletizado_admins").update({ ultimo_uso: new Date().toISOString() }).eq("id", a.id);
-  }
+  const { data: a } = await sb.from("paletizado_admins").select("id,nombre,ultimo_uso,dispositivo,vence_en").eq("hash", await sha256("admin:" + c)).eq("quitado", false).maybeSingle();
+  if (!a) return { rol: "", nombre: "", motivo: "Código no válido o ya fue quitado." };
+  if (a.vence_en && Date.parse(a.vence_en) < Date.now()) return { rol: "", nombre: "", motivo: "Tu código de administrador venció. Pide uno nuevo." };
+  if (!/^[a-zA-Z0-9-]{8,64}$/.test(dispositivo)) return { rol: "", nombre: "", motivo: "Celular no identificado." };
+  if (a.dispositivo && a.dispositivo !== dispositivo) return { rol: "", nombre: "", motivo: "Este código ya se usó en otro celular. Pide uno nuevo." };
+  const cambios: Record<string, string> = {};
+  if (!a.dispositivo) cambios.dispositivo = dispositivo;                       // primer uso: queda amarrado a este celular
+  if (!a.ultimo_uso || Date.now() - Date.parse(a.ultimo_uso) > 300_000) cambios.ultimo_uso = new Date().toISOString();
+  if (Object.keys(cambios).length) await sb.from("paletizado_admins").update(cambios).eq("id", a.id);
   return { rol: "admin", nombre: a.nombre, id: a.id };
 }
 
@@ -182,8 +187,8 @@ Deno.serve(async (req) => {
 
     // ¿Qué rol tiene este código o esta sesión? (para mostrar las opciones de administración)
     if (accion === "quien") {
-      const q = await quienEs(req);
-      return json({ rol: q.rol || "ninguno", nombre: q.rol === "admin" ? q.nombre : "" });
+      const q = await quienEs(req, dispositivo);
+      return json({ rol: q.rol || "ninguno", nombre: q.rol === "admin" ? q.nombre : "", motivo: q.motivo || "" });
     }
 
     // Sugerencias: cualquiera puede enviar (máx. 20 por celular al día)
@@ -247,15 +252,15 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Administración ----------
-    const yo = await quienEs(req);
-    if (!yo.rol) return json({ error: "Solo un administrador puede hacer esto. Entra como administrador en la pestaña Tareas." }, 401);
+    const yo = await quienEs(req, dispositivo);
+    if (!yo.rol) return json({ error: yo.motivo || "Solo un administrador puede hacer esto. Entra como administrador en la pestaña Tareas." }, 401);
 
     // Solo el propietario: invitar, ver y quitar administradores
     if (accion === "invitar_admin" || accion === "admins" || accion === "quitar_admin") {
       if (yo.rol !== "propietario") return json({ error: "acción desconocida" }, 400);   // no revela que existe
       if (accion === "admins") {
-        const { data } = await sb.from("paletizado_admins").select("id,nombre,creado_en,ultimo_uso").eq("quitado", false).order("creado_en", { ascending: true });
-        return json({ admins: data || [] });
+        const { data } = await sb.from("paletizado_admins").select("id,nombre,creado_en,ultimo_uso,dispositivo,vence_en").eq("quitado", false).order("creado_en", { ascending: true });
+        return json({ admins: (data || []).map((a: Record<string, unknown>) => ({ ...a, dispositivo: undefined, celular: !!a.dispositivo })) });
       }
       if (accion === "quitar_admin") {
         const id = texto(b.id, 40);
@@ -265,10 +270,12 @@ Deno.serve(async (req) => {
       }
       const nombre = String(b.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
       if (nombre.length < 2) return json({ error: "Escribe el nombre del administrador" }, 400);
+      const dias = Math.min(Math.max(Math.round(Number(b.dias) || 30), 1), 365);
+      const vence_en = new Date(Date.now() + dias * 864e5).toISOString();
       const codigo = codigoAdmin();
-      const { data, error } = await sb.from("paletizado_admins").insert({ nombre, hash: await sha256("admin:" + limpiarCodigo(codigo)) }).select("id").single();
+      const { data, error } = await sb.from("paletizado_admins").insert({ nombre, hash: await sha256("admin:" + limpiarCodigo(codigo)), vence_en }).select("id").single();
       if (error) return json({ error: "No se pudo crear el administrador" }, 500);
-      return json({ codigo, id: data.id, nombre });
+      return json({ codigo, id: data.id, nombre, vence_en });
     }
 
     if (accion === "sugerencias") {

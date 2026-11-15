@@ -96,7 +96,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.8.1';
+const VERSION_APP = '0.8.2';
 function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -411,10 +411,11 @@ const pantallas = {
     const admins = estado.admins || [];
     const panelAdmins = estado.esPropietario ? `<section class="tarjeta"><h2>Administradores</h2>
       <p class="nota">Pueden manejar todo dentro de la app (tareas, datos de todos, ajustes, sugerencias y enseñar al agente). No pueden cambiar el código ni ver esta sección.</p>
-      <form id="formInvitar" class="fila"><label>Nombre<input name="nombre" required placeholder="Ej: Carlos Pérez"></label><button class="boton">Crear administrador</button></form>
-      ${estado.nuevoAdmin ? `<div class="aviso ok"><b>Código de ${esc(estado.nuevoAdmin.nombre)}: <span class="codigo">${esc(estado.nuevoAdmin.codigo)}</span></b><br>Solo se muestra esta vez. Mándaselo por un mensaje privado.<br>
+      <form id="formInvitar" class="fila"><label>Nombre<input name="nombre" required placeholder="Ej: Carlos Pérez"></label><label>El código dura (días)<input name="dias" type="number" value="30" min="1" max="365"></label><button class="boton">Crear administrador</button></form>
+      <p class="nota">El código sirve en un solo celular (el primero donde lo usen) y vence en los días que elijas.</p>
+      ${estado.nuevoAdmin ? `<div class="aviso ok"><b>Código de ${esc(estado.nuevoAdmin.nombre)}: <span class="codigo">${esc(estado.nuevoAdmin.codigo)}</span></b><br>Vence el ${esc(new Date(estado.nuevoAdmin.vence_en).toLocaleDateString('es-CO'))}. Solo se muestra esta vez. Mándaselo por un mensaje privado.<br>
         <a class="boton" href="${mensajeAdmin(estado.nuevoAdmin.nombre, estado.nuevoAdmin.codigo)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="boton sec" id="copiarCodigoAdmin">Copiar código</button></div>` : ''}
-      ${admins.length ? `<div class="tabla"><table><tr><th>Nombre</th><th>Desde</th><th>Último uso</th><th></th></tr>${admins.map((a) => `<tr><td>${esc(a.nombre)}</td><td>${esc(new Date(a.creado_en).toLocaleDateString('es-CO'))}</td><td>${a.ultimo_uso ? esc(new Date(a.ultimo_uso).toLocaleString('es-CO')) : 'Aún no entra'}</td><td><button class="boton peligro" data-quitar-admin="${esc(a.id)}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="nota">Todavía no hay administradores.</p>'}
+      ${admins.length ? `<div class="tabla"><table><tr><th>Nombre</th><th>Vence</th><th>Celular</th><th>Último uso</th><th></th></tr>${admins.map((a) => `<tr><td>${esc(a.nombre)}</td><td>${a.vence_en ? `${esc(new Date(a.vence_en).toLocaleDateString('es-CO'))}${Date.parse(a.vence_en) < Date.now() ? ' <span class="pill falta">VENCIDO</span>' : ''}` : '—'}</td><td>${a.celular ? 'Amarrado' : 'Sin usar'}</td><td>${a.ultimo_uso ? esc(new Date(a.ultimo_uso).toLocaleString('es-CO')) : 'Aún no entra'}</td><td><button class="boton peligro" data-quitar-admin="${esc(a.id)}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="nota">Todavía no hay administradores.</p>'}
     </section>` : '';
     return `<p class="nota">Entraste como <b>${esc(quien)}</b>.</p>${panelAdmins}<section class="tarjeta"><h2>Nueva tarea para enviar por WhatsApp</h2>
       <form id="formTarea">
@@ -739,7 +740,7 @@ async function cargarAdmin() {
     estado.usuarios = u; estado.tareas = t.tareas; if (a) estado.admins = a.admins;
     if (pestanaActual === 'tareas') mostrar('tareas');
   } catch (e) {
-    if (e.codigo === 401) { salirAdmin(); notificar('Tu acceso de administrador ya no es válido. Pide un código nuevo.', 'error'); return; }
+    if (e.codigo === 401) { salirAdmin(); notificar(e.message || 'Tu acceso de administrador ya no es válido. Pide un código nuevo.', 'error'); return; }
     notificar(e.message, 'error');
   }
 }
@@ -1072,7 +1073,7 @@ function conectar(tab) {
           Object.assign(estado, { conSesion: true, esPropietario: true });
         } else {
           const r = await llamar('quien', {}, { codigo: usuario });
-          if (r.rol !== 'admin') throw new Error('Código no válido o ya fue quitado.');
+          if (r.rol !== 'admin') throw new Error(r.motivo || 'Código no válido o ya fue quitado.');
           guardarAdmin(usuario, r.nombre);
           Object.assign(estado, { conSesion: true, esPropietario: false });
         }
@@ -1082,8 +1083,9 @@ function conectar(tab) {
     $('#formInvitar')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       try {
-        const r = await llamar('invitar_admin', { nombre: new FormData(e.target).get('nombre') }, await accesoAdmin());
-        estado.nuevoAdmin = { nombre: r.nombre, codigo: r.codigo }; cargarAdmin(); mostrar('tareas');
+        const fd = new FormData(e.target);
+        const r = await llamar('invitar_admin', { nombre: fd.get('nombre'), dias: Number(fd.get('dias')) || 30 }, await accesoAdmin());
+        estado.nuevoAdmin = { nombre: r.nombre, codigo: r.codigo, vence_en: r.vence_en }; cargarAdmin(); mostrar('tareas');
       } catch (err) { notificar(err.message, 'error'); }
     });
     $('#copiarCodigoAdmin')?.addEventListener('click', () => copiar(estado.nuevoAdmin?.codigo || ''));

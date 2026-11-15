@@ -21,7 +21,7 @@ def responder(route):
         return ok({'ok': True})
     if a == 'conocimiento': return ok({'conocimiento': [k for k in nube['conocimiento'] if k.get('activo', True)]})
     if a == 'config': return ok({'config': nube['config']})
-    if a == 'quien': return ok({'rol': 'admin', 'nombre': 'Carlos Prueba'} if es_admin else {'rol': 'ninguno', 'nombre': ''})
+    if a == 'quien': return ok({'rol': 'admin', 'nombre': 'Carlos Prueba'} if es_admin else {'rol': 'ninguno', 'nombre': '', 'motivo': 'Código no válido o ya fue quitado.'})
     if a == 'sugerir':
         nube['sugerencias'].insert(0, {'id': f'00000000-0000-0000-0000-00000000000{len(nube["sugerencias"]) + 1}', 'texto': b['texto'], 'categoria': b['categoria'], 'nombre': b.get('nombre'),
                                        'estado': 'NUEVA', 'respuesta': None, 'creado_en': '2026-11-14T20:00:00Z'})
