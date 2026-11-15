@@ -1,0 +1,21 @@
+name: Probar inventario en la nube
+on:
+  workflow_dispatch:
+    inputs:
+      codigo:
+        description: Código de administrador de PRUEBA (temporal)
+        required: true
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probar la función inventario
+        env:
+          CODIGO_PRUEBA: ${{ inputs.codigo }}
+        run: |
+          echo "::add-mask::$CODIGO_PRUEBA"
+          node scripts/probar_inventario_nube.mjs
