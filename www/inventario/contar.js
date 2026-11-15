@@ -513,6 +513,6 @@ $('#btn-comenzar').addEventListener('click', comenzar);
 $('#btn-volver').addEventListener('click', async () => { await enviarPendientes(); estado.actual = null; cargar(); });
 $('#btn-terminar').addEventListener('click', terminarPasillo);
 if (almacen.leer(CLAVE_INICIO, false)) activarVigilancia();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
+if ('serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {});
 cargar();
 iniciarSondeo();
