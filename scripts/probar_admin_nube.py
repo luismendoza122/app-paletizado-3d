@@ -51,5 +51,17 @@ s, r = llamar('conocimiento', {'limite': 200}); revisar('lección olvidada no ll
 s, r = llamar('guardar_config', {'datos': {'palet': {'largo': 'x'}}}, admin=CODIGO); revisar('ajustes inválidos rechazados', s == 400, r)
 s, r = llamar('config'); revisar('leer ajustes (público)', s == 200 and 'config' in r, r)
 
+# Puente de Google Drive (pestaña Drive)
+s, r = llamar('puente'); revisar('sin código no ve el puente', s == 401, r)
+s, r = llamar('guardar_puente', {'url': 'https://evil.example.com/exec', 'carpetas': []}, admin=CODIGO); revisar('dirección de puente falsa rechazada', s == 400, r)
+s, r = llamar('guardar_puente', {'url': '', 'carpetas': [{'id': '../malo', 'nombre': 'x'}]}, admin=CODIGO); revisar('carpeta inválida rechazada', s == 400, r)
+s, r = llamar('puente', admin=CODIGO); previo = r.get('puente', {}); revisar('admin ve el puente', s == 200 and 'url' in previo, r)
+url = 'https://script.google.com/macros/s/PRUEBA_automatica_123/exec'
+s, r = llamar('guardar_puente', {'url': url, 'carpetas': [{'id': '1PRUEBAautomatica000000000', 'nombre': '[PRUEBA]'}]}, admin=CODIGO); revisar('guardar puente', s == 200 and r.get('puente', {}).get('url') == url, r)
+s, r = llamar('puente', admin=CODIGO); revisar('el puente quedó guardado', r.get('puente', {}).get('carpetas', [{}])[0].get('nombre') == '[PRUEBA]', r)
+s, r = llamar('guardar_puente', {'url': previo.get('url', ''), 'carpetas': previo.get('carpetas', [])}, admin=CODIGO); revisar('puente devuelto como estaba', s == 200, r)
+# Ya no se aceptan posiciones A y B
+s, r = llamar('guardar', {'cambios': [{'codigo': '05-001x1A', 'version_base': 0, 'datos': {'CODIGO': '05-001x1A'}}]}, admin=CODIGO); revisar('posición A/B rechazada', s == 200 and r.get('rechazadas') == ['05-001x1A'], r)
+
 print('RESULTADO:', 'BIEN' if not fallas else 'FALLAS: ' + ', '.join(fallas))
 sys.exit(1 if fallas else 0)
