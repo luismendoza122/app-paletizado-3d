@@ -96,7 +96,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.8.0';
+const VERSION_APP = '0.8.1';
 function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -749,7 +749,7 @@ function panelEnsenar() {
   const preg = estado.preguntasAdmin;
   const lecciones = estado.conocimiento || [];
   return `<section class="tarjeta"><h2>Enseñar al agente (administración)</h2>
-    <p class="nota">Cada día el agente recibe una lección nueva de logística. Además aprende de lo que le enseñes aquí: la lección llega a todos los celulares y el agente la usa para responder.</p>
+    <p class="nota">El agente aprende de tres fuentes: una lección de logística cada madrugada, las lecciones de trabajo que THEMENDO guarda en Copilot (Cuaderno) y lo que le enseñes aquí. Todo llega a todos los celulares.</p>
     <h3>Preguntas que no supo responder</h3>
     ${!preg ? '<p class="nota">Cargando…</p>' : !preg.length ? '<p class="nota">No hay preguntas pendientes.</p>' : preg.map((q) => `<form class="sug" data-preg="${q.id}">
       <p><b>${esc(q.texto)}</b> <small>· ${q.veces} ${q.veces === 1 ? 'vez' : 'veces'}</small></p>
@@ -759,7 +759,7 @@ function panelEnsenar() {
     <form id="formLeccion"><label>Pregunta o tema<input name="titulo" required minlength="4" maxlength="120" placeholder="Ej: ¿A qué hora se cierra el recibo?"></label>
       <label>Lo que debe responder<textarea name="contenido" rows="3" required minlength="10" maxlength="2000"></textarea></label><button class="boton">Guardar lección</button></form>
     <details class="mas"><summary>Lo que ya aprendió (${lecciones.length})</summary>
-      ${lecciones.map((k) => `<div class="sug"><small>${esc(k.fecha)} · ${k.origen === 'ensenado' ? 'Enseñado' : 'Aprendizaje diario'} · ${esc(k.tema)}</small><p><b>${esc(k.titulo)}</b></p><p>${esc(k.contenido.slice(0, 300))}${k.contenido.length > 300 ? '…' : ''}</p>${k.id ? `<button class="boton peligro" data-olvidar="${k.id}">Olvidar</button>` : ''}</div>`).join('') || '<p class="nota">Nada todavía.</p>'}
+      ${lecciones.map((k) => `<div class="sug"><small>${esc(k.fecha)} · ${{ ensenado: 'Enseñado', copilot: 'Aprendido en Copilot' }[k.origen] || 'Aprendizaje diario'} · ${esc(k.tema)}</small><p><b>${esc(k.titulo)}</b></p><p>${esc(k.contenido.slice(0, 300))}${k.contenido.length > 300 ? '…' : ''}</p>${k.id ? `<button class="boton peligro" data-olvidar="${k.id}">Olvidar</button>` : ''}</div>`).join('') || '<p class="nota">Nada todavía.</p>'}
     </details></section>`;
 }
 

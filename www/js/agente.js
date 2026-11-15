@@ -104,10 +104,11 @@ function buscarArticulo(texto, posiciones) {
   return puntos ? mejor : null;
 }
 
-// Lecciones que enseñó la administración, con la misma forma que las fichas de la biblioteca.
+// Lecciones que enseñó la administración o que vienen de THEMENDO en Copilot, con la forma de las fichas.
 export function fichasEnsenadas(conocimiento = []) {
-  return conocimiento.filter((k) => k.origen === 'ensenado').map((k) => ({
-    tema: 'Enseñado', titulo: k.titulo, claves: [], texto: [k.contenido, 'Esto me lo enseñó la administración.'],
+  return conocimiento.filter((k) => k.origen === 'ensenado' || k.origen === 'copilot').map((k) => ({
+    tema: k.origen === 'copilot' ? 'Copilot' : 'Enseñado', titulo: k.titulo, claves: [],
+    texto: [k.contenido, k.origen === 'copilot' ? 'Esto lo aprendí de THEMENDO en Copilot.' : 'Esto me lo enseñó la administración.'],
   }));
 }
 

@@ -56,6 +56,9 @@ export const BIBLIOTECA = [
   { tema: 'Administración', titulo: 'Enseñar al agente', claves: ['ensenar', 'leccion', 'aprenda', 'aprender', 'no supo', 'olvidar'], texto: [
     'Cuando el agente no sabe algo, la pregunta le llega a la administración. En la pestaña Agente → "Enseñar al agente" el administrador escribe la respuesta y toca "Enseñar": la lección llega a todos los celulares.',
     'También se puede escribir una lección nueva, convertir la respuesta de una sugerencia en lección, u "Olvidar" una que esté mal. Además, cada madrugada el agente recibe una lección nueva de logística (aprendizaje diario).'] },
+  { tema: 'Administración', titulo: 'El agente aprende de Copilot (THEMENDO)', claves: ['copilot', 'themendo', 'cuaderno', 'leccion de copilot'], texto: [
+    'Las lecciones que THEMENDO deja en Copilot y que se guardan en su Cuaderno también llegan al agente de la app. Solo pasan las de trabajo (logística, CEDI, inventarios, Excel, SAP, recibo, despacho…).',
+    'Si una lección se descarta en el Cuaderno, el agente la olvida. También se puede olvidar desde Agente → "Enseñar al agente" → "Lo que ya aprendió".'] },
   { tema: 'Administración', titulo: 'Ajustes iguales para todos', claves: ['ajustes para todos', 'publicar ajustes', 'aplicar a todos', 'misma configuracion'], texto: [
     'En Ajustes, un administrador toca "Guardar y aplicar a todos los celulares". Los demás reciben las medidas del palet y el apoyo mínimo la próxima vez que abran la app con señal.'] },
   { tema: 'Reubicar', titulo: 'Plan de reubicación', claves: ['reubicar', 'reubicacion', 'plan', 'movimiento', 'mover', 'slotting'], texto: [

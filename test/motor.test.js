@@ -150,3 +150,13 @@ test('agente: usa lo que le enseñó la administración y avisa lo que no sabe',
   assert.match(responder('¿cómo envío una sugerencia?', { ...base, conocimiento })[0], /sugerencia/i);
   assert.match(responder('¿cómo entro como administrador?', { ...base, conocimiento })[0], /administrador/i);
 });
+
+test('agente: usa las lecciones que vienen de Copilot (THEMENDO)', async () => {
+  const { responder } = await import('../www/js/agente.js');
+  const { generarLayout } = await import('../www/js/datos/layout.js');
+  const conocimiento = [{ id: 20, fecha: '2026-11-13', tema: 'Aprendido en Copilot', titulo: 'Asignación diaria de tareas para 3 operadores de bodega.',
+    contenido: 'Funcionó: Distribución equilibrada entre reabastecimiento, control de inventario y despacho. · Para la próxima: Incluir nombres de operadores, metas y tiempos.', origen: 'copilot' }];
+  const r = responder('¿cómo hago la asignación diaria de tareas a los operadores de bodega?', { filas: generarLayout(), posiciones: [], propuesta: null, pedidos: [], palet: { largo: 1200, ancho: 1000, altoBase: 150, alturaMaxTotal: 1800, cargaMax: 1000 }, conocimiento });
+  assert.ok(r.join(' ').includes('reabastecimiento'));
+  assert.ok(r.join(' ').includes('THEMENDO en Copilot'));
+});

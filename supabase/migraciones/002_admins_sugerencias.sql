@@ -52,3 +52,7 @@ alter table public.paletizado_admins      enable row level security;
 alter table public.paletizado_sugerencias enable row level security;
 alter table public.paletizado_preguntas   enable row level security;
 alter table public.paletizado_config      enable row level security;
+
+-- Lecciones que vienen de THEMENDO (Copilot): se copian una sola vez, marcadas con su id de origen.
+alter table public.paletizado_conocimiento add column if not exists fuente_id text;
+create unique index if not exists paletizado_conocimiento_fuente on public.paletizado_conocimiento (fuente_id) where fuente_id is not null;

@@ -77,6 +77,37 @@ const CATEGORIAS = ["Mejora de la app", "Ubicación o reubicación", "Dato equiv
 const claveDe = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
 const hace24h = () => new Date(Date.now() - 864e5).toISOString();
 
+// Lecciones de THEMENDO (Copilot) → aprendizaje del agente de la app.
+// Solo las de trabajo (logística, CEDI, Excel, SAP…) y que no estén descartadas en el Cuaderno.
+const TRABAJO = /(logist|cedi|bodega|inventari|palet|estiba|picking|slotting|ubicaci|pasillo|wpms|wms|sap|excel|power bi|kpi|otif|recibo|despacho|transporte|conteo|operador|reabastec|arrume|abastec|proveedor|merma|averia|turno|camion|muelle|garita)/;
+const norm = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function leccionCopilot(l: { texto: string; tema: string | null }) {
+  const lineas = String(l.texto || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const campo = (re: RegExp) => { const x = lineas.find((y) => re.test(y)); return x ? x.replace(re, "").trim() : ""; };
+  const tema = l.tema || campo(/^tema(\s*\/\s*pedido)?\s*:\s*/i);
+  const pedido = campo(/^pedido\s*:\s*/i);
+  const cuerpo = lineas.filter((y) => !/^lecci[oó]n\b/i.test(y) && !/^fecha\s*:/i.test(y) && !/^tema(\s*\/\s*pedido)?\s*:/i.test(y));
+  return { titulo: (tema || pedido || cuerpo[0] || "Lección de Copilot").slice(0, 120), contenido: cuerpo.join(" · ").slice(0, 2000) };
+}
+async function importarCopilot() {
+  const { data: lecciones } = await sb.from("themendo_lecciones").select("id,texto,tema,estado,creado").order("creado", { ascending: false }).limit(300);
+  if (!lecciones?.length) return;
+  const { data: ya } = await sb.from("paletizado_conocimiento").select("id,fuente_id,activo").like("fuente_id", "themendo:%");
+  const copiadas = new Map<string, { id: number; activo: boolean }>((ya || []).map((k: { id: number; fuente_id: string; activo: boolean }) => [k.fuente_id, k]));
+  for (const l of lecciones) {
+    const fuente = `themendo:${l.id}`;
+    const previa = copiadas.get(fuente);
+    if (l.estado === "descartada") {                       // si la descartan en el Cuaderno, el agente la olvida
+      if (previa?.activo) await sb.from("paletizado_conocimiento").update({ activo: false }).eq("id", previa.id);
+      continue;
+    }
+    if (previa || !TRABAJO.test(norm(`${l.tema || ""} ${l.texto}`))) continue;
+    const { titulo, contenido } = leccionCopilot(l);
+    if (contenido.length < 10) continue;
+    await sb.from("paletizado_conocimiento").insert({ fecha: String(l.creado).slice(0, 10), tema: "Aprendido en Copilot", titulo, contenido, fuentes: [], origen: "copilot", fuente_id: fuente });
+  }
+}
+
 function token() {
   const b = new Uint8Array(18);
   crypto.getRandomValues(b);
@@ -139,6 +170,7 @@ Deno.serve(async (req) => {
     }
 
     if (accion === "conocimiento") {
+      try { await importarCopilot(); } catch { /* si falla, se entrega lo que ya hay */ }
       const { data } = await sb.from("paletizado_conocimiento").select("id,fecha,tema,titulo,contenido,fuentes,origen").eq("activo", true).order("fecha", { ascending: false }).order("id", { ascending: false }).limit(Math.min(Number(b.limite) || 30, 200));
       return json({ conocimiento: data || [] });
     }
