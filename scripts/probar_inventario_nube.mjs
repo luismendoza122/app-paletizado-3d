@@ -21,8 +21,9 @@ r = await pedir('GET', '/api/admin/config', { admin: false });
 ok(r.status === 401, 'sin código no entra (401)');
 r = await pedir('GET', '/api/admin/config');
 ok(r.status === 200 && r.body.secciones?.length === 7, `con código entra y ve las 7 secciones (${r.status})`);
-const pid = (c) => r.body.secciones.flatMap((s) => s.pasillos).find((p) => p.codigo === c).id;
 const cfg = r.body;
+const pid = (c) => cfg.secciones.flatMap((s) => s.pasillos).find((p) => p.codigo === c).id;
+
 r = await pedir('GET', '/api/admin/config', { cel: 'otro-celular-9999' });
 ok(r.status === 401 && /otro celular/.test(r.body.error), `el código no sirve en otro celular: "${r.body.error}"`);
 r = await pedir('GET', '/api/admin/quien');
