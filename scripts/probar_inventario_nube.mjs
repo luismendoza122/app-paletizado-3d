@@ -6,7 +6,7 @@ if (!CODIGO) { console.error('Falta CODIGO_PRUEBA'); process.exit(1); }
 let fallas = 0;
 const ok = (cond, txt) => { console.log(`${cond ? '✓' : '✗'} ${txt}`); if (!cond) fallas++; };
 async function pedir(metodo, ruta, { cuerpo, admin = true, cel = 'cel-prueba-admin-01' } = {}) {
-  const h = { 'Content-Type': 'application/json', 'x-dispositivo': cel };
+  const h = { 'Content-Type': 'application/json', 'x-dispositivo': cel, 'x-region': 'us-east-1' };
   if (admin) h['x-admin'] = CODIGO;
   const r = await fetch(`${BASE}${ruta}`, { method: metodo, headers: h, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
   const t = await r.text();
