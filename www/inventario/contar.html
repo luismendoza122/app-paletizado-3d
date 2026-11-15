@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3864">
+  <meta name="robots" content="noindex">
+  <title>Inventario de estibas</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icono.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="contar.css">
+</head>
+<body>
+  <header class="barra">
+    <div>
+      <h1 id="titulo">Inventario de estibas</h1>
+      <p id="subtitulo">Cargando…</p>
+    </div>
+    <span id="estado-guardado" class="chip gris" aria-live="polite">—</span>
+  </header>
+
+  <div id="alerta-salida" class="alerta-salida" hidden role="alert"></div>
+
+  <main class="contenedor estrecho">
+    <!-- Mensaje (error, espera, gracias) -->
+    <section id="p-mensaje" class="pantalla centrada" hidden>
+      <div class="icono-grande" id="m-icono" aria-hidden="true">⏳</div>
+      <h2 id="m-titulo"></h2>
+      <p id="m-texto" class="tenue"></p>
+    </section>
+
+    <!-- Bienvenida -->
+    <section id="p-bienvenida" class="pantalla" hidden>
+      <h2 id="b-hola"></h2>
+      <p class="tenue">Te asignaron estos pasillos:</p>
+      <div id="b-pasillos" class="lista-chips"></div>
+      <p id="b-offline" class="chip ok listo-offline" hidden>✓ Lista para usar sin conexión en este celular</p>
+      <div class="tarjeta pasos">
+        <h3>Antes de empezar</h3>
+        <ol>
+          <li><strong>Fija la app en pantalla</strong> para no salir mientras cuentas:<br>
+            <span class="tenue">Android: Ajustes → Seguridad → <em>Fijar aplicación</em> (activar). Luego abre Recientes, toca el ícono de esta app y elige <em>Fijar</em>.</span></li>
+          <li>Mientras cuentas no uses otras aplicaciones: <strong>cada salida queda registrada</strong> y la ve el administrador.</li>
+          <li>Escribe lo que ves en cada módulo. Puedes escribir sumas, por ejemplo <strong>4+1</strong>.</li>
+          <li><strong>Funciona sin señal:</strong> ya abierto este enlace, puedes contar y terminar pasillos sin conexión. Todo queda en el celular y se envía solo cuando vuelva la señal. No borres los datos del navegador.</li>
+        </ol>
+      </div>
+      <button class="boton ancho" id="btn-comenzar" type="button">Comenzar inventario</button>
+    </section>
+
+    <!-- Lista de pasillos -->
+    <section id="p-lista" class="pantalla" hidden>
+      <h2>Mis pasillos</h2>
+      <div id="lista-asignaciones"></div>
+      <div id="lista-espera" class="tarjeta espera" hidden>
+        <strong id="espera-titulo">Terminaste tus pasillos.</strong>
+        <p class="tenue" id="espera-texto"></p>
+      </div>
+    </section>
+
+    <!-- Planilla -->
+    <section id="p-planilla" class="pantalla" hidden>
+      <div class="planilla-cabecera">
+        <button class="boton texto" id="btn-volver" type="button">← Mis pasillos</button>
+        <div class="planilla-titulo">
+          <h2 id="pl-titulo"></h2>
+          <span id="pl-tipo" class="chip"></span>
+        </div>
+        <p id="pl-ayuda" class="tenue ayuda"></p>
+        <div id="pl-totales" class="totales"></div>
+      </div>
+      <div class="planilla-tabla" role="table" aria-label="Planilla de conteo">
+        <div class="pl-fila pl-encabezado" role="row" id="pl-encabezado"></div>
+        <div id="pl-filas"></div>
+      </div>
+      <div class="tarjeta observacion">
+        <label for="pl-obs">📝 Observaciones de este pasillo <span class="tenue">(opcional)</span></label>
+        <textarea id="pl-obs" rows="3" maxlength="500" placeholder="Ej. módulo 010 con estibas dañadas, pasillo bloqueado, estibas sin etiqueta…"></textarea>
+        <small class="tenue" id="pl-obs-cuenta"></small>
+      </div>
+      <button class="boton ok ancho" id="btn-terminar" type="button">Terminar pasillo</button>
+    </section>
+  </main>
+
+  <div id="aviso" class="aviso-flotante" role="status" aria-live="polite"></div>
+  <script src="nube.js"></script>
+  <script src="contar.js"></script>
+</body>
+</html>

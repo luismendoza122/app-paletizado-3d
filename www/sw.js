@@ -16,6 +16,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // la nube no pasa por aquí
+  if (url.pathname.includes('/inventario/')) return;                         // el inventario tiene su propio service worker
   e.respondWith(
     fetch(e.request).then((r) => {
       if (r.ok) { const copia = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copia)); }
