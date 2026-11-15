@@ -24,7 +24,9 @@ El dueño (Luis) trabaja en **Windows**, está aprendiendo Node.js y prefiere ex
 - Todo texto que venga del usuario, de Excel o de la nube se inserta con la función `esc()` antes de usar `innerHTML`.
 - Nunca poner claves en el código. La app solo lleva la URL de Supabase y la llave **publicable**; la llave de servicio vive en la función `supabase/functions/paletizado`.
 - Las tablas `paletizado_*` tienen RLS activo **sin políticas**: no agregar políticas para `anon`.
-- Toda acción nueva de la función valida y recorta sus datos (ver `limpiarDatos`) y revisa permisos (`esLuis` o el token de la tarea).
+- Toda acción nueva de la función valida y recorta sus datos (ver `limpiarDatos`) y revisa permisos con `quienEs`: propietario (cuenta principal, nunca aparece en listas ni en textos de la app), administrador (código personal en el encabezado `x-admin`, guardado solo como sha256) o el token de una tarea.
+- Lo que solo puede hacer el propietario (invitar, ver y quitar administradores) responde "acción desconocida" a los demás, para no revelar que existe.
+- Lo público (sugerir, avisar preguntas, leer aprendizaje y ajustes) lleva límites por celular al día.
 - La llave de firma de la APK (`*.keystore`) nunca va al repositorio; se pasa con `FIRMA_ARCHIVO` y `FIRMA_CLAVE`.
 - Revisa `SEGURIDAD.md` antes de tocar la nube, las tareas por enlace o la firma.
 
