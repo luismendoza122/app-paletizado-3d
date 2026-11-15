@@ -50,5 +50,6 @@ npm run apk        # compila la APK en salida\paletizado-3d.apk
 - Las pruebas no usan el DOM: la lógica va en módulos puros y `app.js` solo la conecta.
 
 ## Páginas solo web
-`www/recibo/`, `www/themendo/` y `www/inventario/` se publican en GitHub Pages pero NO entran en la APK:
+`www/recibo/` y `www/themendo/` se publican en GitHub Pages pero NO entran en la APK. `www/inventario/` es solo un aviso que
+lleva al Inventario de estibas, que es independiente (repositorio `inventario-estibas`, https://luismendoza122.github.io/inventario-estibas/):
 `npm run build` arma `www-apk/` sin esas carpetas y Capacitor usa `www-apk` (ver `capacitor.config.json`).
