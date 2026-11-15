@@ -96,3 +96,4 @@ input:disabled { background: #eef1f4; color: var(--gris); }
 .sug .respuesta { background: #eef7f1; border-radius: 8px; padding: 6px 8px; }
 .codigo { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 2px; }
 textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--borde); border-radius: 8px; box-sizing: border-box; }
+[hidden] { display: none !important; }
