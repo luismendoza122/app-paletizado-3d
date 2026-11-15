@@ -9,10 +9,10 @@ import { leerArchivo, aCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
 import { BIBLIOTECA } from './biblioteca.js';
-import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
+import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo, aBase64 } from './exportar.js';
 import { generarLayout, mezclar, estadoDe, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
 import { noSupo, diagnostico, responder } from './agente.js';
-import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp, accesoAdmin, adminGuardado, guardarAdmin, mensajeAdmin } from './datos/nube.js';
+import { FUNCION, NUBE, llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp, accesoAdmin, adminGuardado, guardarAdmin, mensajeAdmin } from './datos/nube.js';
 
 export const REPO = 'luismendoza122/app-paletizado-3d';
 const URL_APK = `https://github.com/${REPO}/releases/latest/download/paletizado-3d.apk`;
@@ -96,7 +96,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.8.2';
+const VERSION_APP = '0.8.3';
 function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -590,6 +590,37 @@ const pantallas = {
       ${mias.length ? mias.map(tarjeta).join('') : '<p class="nota">Aún no has enviado sugerencias desde este celular.</p>'}
       <button class="boton sec" id="refrescarSug">Ver respuestas</button>
     </section>${admin}`;
+  },
+
+  drive() {
+    if (!estado.conSesion) {
+      return `<section class="tarjeta"><h2>Google Drive</h2><p class="nota">Solo la administración enlaza Drive. Entra como administrador en la pestaña <a href="#" data-ir="tareas">Tareas</a>.</p></section>`;
+    }
+    const d = estado.drive || { url: '', carpetas: [] };
+    const conectado = window.PuenteDrive?.esPuente(d.url);
+    return `<section class="tarjeta"><h2>Google Drive</h2>
+      <p class="nota">Enlaza una o varias carpetas de Drive para guardar ahí el Excel de Paletizado. Funciona con un <b>puente</b>: un código pequeño de Google que se publica una sola vez en la cuenta dueña de las carpetas.</p>
+      <p><span class="pill ${conectado ? 'BASE' : 'falta'}" id="drEstado">${conectado ? `Conectado · ${esc(d.carpetas.map((c) => c.nombre || c.id).join(', '))}` : 'Sin conectar'}</span></p></section>
+    <section class="tarjeta"><h2>1. Direcciones de las carpetas</h2>
+      <label>Pega la dirección de cada carpeta (una por línea)<textarea id="drDirecciones" rows="3" placeholder="https://drive.google.com/drive/folders/…">${esc(estado.driveDirecciones ?? d.carpetas.map((c) => `https://drive.google.com/drive/folders/${c.id}`).join('\n'))}</textarea></label>
+      <button class="boton" id="drCrear">Crear el código del puente</button> <button class="boton sec" id="drThemendo">Pedírselo a THEMENDO</button>
+      <div id="drCodigoCaja" ${estado.driveCodigo ? '' : 'hidden'}>
+        <p class="nota" id="drDetectadas">${esc(estado.driveDetectadas || '')}</p>
+        <ol class="nota">
+          <li>Abre <a href="https://script.google.com/create" target="_blank" rel="noopener">script.google.com</a> con la cuenta dueña de las carpetas → borra lo que haya y pega el código → Guardar.</li>
+          <li><b>Implementar → Nueva implementación →</b> tipo <b>Aplicación web</b>. Ejecutar como: <b>Yo</b>. Quién tiene acceso: <b>Cualquier persona</b> → Implementar → Autorizar acceso.</li>
+          <li>Copia la <b>URL de la aplicación web</b> (termina en <code>/exec</code>) y pégala en el paso 2.</li>
+        </ol>
+        <textarea id="drCodigo" rows="8" readonly spellcheck="false">${esc(estado.driveCodigo || '')}</textarea>
+        <button class="boton sec" id="drCopiar">Copiar código</button>
+      </div></section>
+    <section class="tarjeta"><h2>2. Conectar el puente</h2>
+      <label>URL de la aplicación web (termina en /exec)<input id="drUrl" inputmode="url" autocomplete="off" spellcheck="false" value="${esc(d.url)}" placeholder="https://script.google.com/macros/s/…/exec"></label>
+      <button class="boton" id="drGuardar">Guardar y probar</button> <button class="boton sec" id="drQuitar">Desconectar</button></section>
+    ${conectado ? `<section class="tarjeta"><h2>3. Enviar a Drive</h2>
+      <label>Carpeta<select id="drCarpeta">${d.carpetas.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre || c.id)}</option>`).join('')}</select></label>
+      <button class="boton" id="drExcel">Enviar Excel de Paletizado</button>
+      <ul class="nota" id="drEnviados">${(estado.driveEnviados || []).map((x) => `<li>${esc(x.nombre)} · <a href="${esc(x.url)}" target="_blank" rel="noopener">Abrir en Drive</a></li>`).join('')}</ul></section>` : ''}`;
   },
 
   ajustes() {
@@ -1116,6 +1147,62 @@ function conectar(tab) {
     $('#salirSesion')?.addEventListener('click', () => salirAdmin());
     if (estado.conSesion && !estado.usuarios) cargarAdmin();
   }
+  if (tab === 'drive' && estado.conSesion) {
+    const P = window.PuenteDrive;
+    if (!estado.drive) {
+      accesoAdmin().then((a) => llamar('puente', {}, a)).then((r) => { estado.drive = r.puente || { url: '', carpetas: [] }; if (pestanaActual === 'drive') mostrar('drive'); })
+        .catch((e) => notificar(e.message, 'error'));
+    }
+    const verificar = { url: FUNCION, metodo: 'post', llave: NUBE.llave };
+    $('#drDirecciones').addEventListener('input', (e) => { estado.driveDirecciones = e.target.value; });
+    $('#drCrear').addEventListener('click', () => {
+      const carpetas = P.carpetasDe($('#drDirecciones').value);
+      if (!carpetas.length) { notificar('Pega la dirección de una carpeta de Drive (https://drive.google.com/drive/folders/…)', 'error'); return; }
+      estado.driveCodigo = P.codigo({ app: 'Paletizado 3D', carpetas, verificar });
+      estado.driveDetectadas = `${carpetas.length} carpeta(s): ${carpetas.join(', ')}`;
+      mostrar('drive');
+      notificar('Código del puente listo: cópialo y publícalo en script.google.com', 'ok');
+    });
+    $('#drCopiar')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('#drCodigo').value); notificar('Código copiado', 'ok'); } catch { $('#drCodigo').select(); notificar('Selecciona el código y cópialo'); }
+    });
+    $('#drThemendo').addEventListener('click', async () => {
+      const dirs = $('#drDirecciones').value.trim();
+      if (!dirs) { notificar('Pega primero la dirección de la carpeta', 'error'); return; }
+      const texto = `THEMENDO, crea el puente de Google Drive para Paletizado 3D con estas carpetas:\n${dirs}`;
+      try { await navigator.clipboard.writeText(texto); notificar('Pedido copiado: pégalo en THEMENDO (Copilot)', 'ok'); } catch { window.prompt('Copia esto y pégalo en THEMENDO:', texto); }
+      window.open('https://m365.cloud.microsoft/chat/agent/T_0beb0366-1b5b-39eb-d032-63302b709bc4.357c5821-89ff-4709-8f75-b75d87754475.gpt.a7b3a646-f2a2-4c8d-a566-90c7e1e2e491', '_blank', 'noopener');
+    });
+    $('#drGuardar').addEventListener('click', async () => {
+      try {
+        const url = $('#drUrl').value.trim();
+        notificar('Probando el puente…');
+        const r = await P.probar(url);
+        const carpetas = (r.carpetas || []).map((c) => ({ id: c.id, nombre: String(c.nombre || '').slice(0, 120) }));
+        estado.drive = (await llamar('guardar_puente', { url, carpetas }, await accesoAdmin())).puente;
+        mostrar('drive');
+        notificar(`Puente conectado: ${carpetas.map((c) => c.nombre).join(', ')}`, 'ok');
+      } catch (e) { notificar(e.message, 'error'); }
+    });
+    $('#drQuitar').addEventListener('click', async () => {
+      if (!(await confirmar('¿Desconectar el puente de Drive? Los archivos que ya están en Drive no se tocan.'))) return;
+      try { estado.drive = (await llamar('guardar_puente', { url: '', carpetas: [] }, await accesoAdmin())).puente; mostrar('drive'); } catch (e) { notificar(e.message, 'error'); }
+    });
+    $('#drExcel')?.addEventListener('click', async () => {
+      try {
+        notificar('Preparando Excel…');
+        const hojas = hojasExcel({ filas: estado.filas, posiciones: estado.posiciones, pedidos: estado.pedidos, propuesta: estado.propuesta, pruebaPedidos: estado.pruebaPedidos, diag: diagnostico(contexto()) });
+        const blob = libroExcel(hojas);
+        const nombre = nombreArchivo('paletizado-cedi', 'xlsx');
+        const acceso = { ...(await accesoAdmin()), dispositivo: idDispositivo() };
+        notificar('Enviando a Drive…');
+        const r = await P.llamar(estado.drive.url, 'subir', { carpeta: $('#drCarpeta').value, nombre, tipo: blob.type, base64: await aBase64(blob) }, acceso);
+        estado.driveEnviados = [{ nombre: r.nombre, url: r.url }, ...(estado.driveEnviados || [])].slice(0, 10);
+        mostrar('drive');
+        notificar(`Guardado en Drive: ${r.nombre}`, 'ok');
+      } catch (e) { notificar(e.message, 'error'); }
+    });
+  }
   if (tab === 'sugerencias') {
     $('#formSug').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1280,6 +1367,8 @@ function conectar(tab) {
 }
 
 document.querySelectorAll('#pestanas button').forEach((b) => b.addEventListener('click', () => mostrar(b.dataset.tab)));
+// Datos de antes con posiciones A y B: ya quedaron unidos al cargar; se guardan así
+if ((leer('ubicaciones', []) || []).some((f) => /[AB]$/.test(f.CODIGO || '') || f.ESTADO === 'DIVIDIDA')) guardarFilas();
 recalcular();
 mostrar(pestanaActual);
 alIniciar();

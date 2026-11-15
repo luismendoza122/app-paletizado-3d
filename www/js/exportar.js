@@ -84,7 +84,7 @@ export function libroExcel(hojas) {
 
 export const nombreArchivo = (base, ext) => `${base}-${hoy()}.${ext}`;
 
-function aBase64(blob) {
+export function aBase64(blob) {
   return new Promise((ok, mal) => {
     const r = new FileReader();
     r.onload = () => ok(String(r.result).split(',')[1]);

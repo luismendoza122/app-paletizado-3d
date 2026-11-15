@@ -29,6 +29,11 @@ export const BIBLIOTECA = [
   { tema: 'Tomar datos', titulo: 'Dato que no aplica', claves: ['no aplica', 'n/a', 'na', 'no corresponde', 'no tiene', 'sin dato'], texto: [
     'Si un dato no corresponde al artículo, toca "No aplica": en Código, Largo, Alto, Ancho y Peso hay un botón al lado del nombre; en Empaque, Líquido y Delicado es la tercera opción. La posición queda completa.',
     'Si no aplican las medidas o el peso, el artículo no entra al cálculo del palet (sin medidas no se puede acomodar). Empaque "no aplica" se calcula como caja; líquido y delicado "no aplica", como NO. En Excel se escribe NO APLICA o N/A.'] },
+  { tema: 'Administración', titulo: 'Enlazar Google Drive (pestaña Drive)', claves: ['drive', 'google drive', 'carpeta', 'puente', 'apps script', 'enlazar drive', 'subir a drive'], texto: [
+    'Pestaña Drive (solo administradores): pega la dirección de una o varias carpetas de Drive, una por línea, y toca "Crear el código del puente". También puedes tocar "Pedírselo a THEMENDO".',
+    'Abre script.google.com con la cuenta dueña de las carpetas → Nuevo proyecto → pega el código → Guardar → Implementar → Nueva implementación → Aplicación web (Ejecutar como: Yo · Quién tiene acceso: Cualquier persona) → Autorizar.',
+    'Copia la URL que termina en /exec, pégala en "Conectar el puente" y toca "Guardar y probar". Luego "Enviar Excel de Paletizado" guarda el Excel en la carpeta que elijas.',
+    'El puente solo atiende a los administradores, solo escribe en esas carpetas y nunca borra: si reenvías, el archivo anterior va a la papelera de Drive.'] },
   { tema: 'Tomar datos', titulo: 'Dos artículos en una posición', claves: ['dividir', 'a y b', 'mitad', 'dos articulos', 'subposicion'], texto: [
     'Ya no se divide en A y B. Si el módulo tiene más espacios, agrégale posiciones (x3, y1…z3) y pon cada artículo en la suya.'] },
   { tema: 'Tomar datos', titulo: 'Posición vacía', claves: ['vacia', 'sin articulo', 'no hay producto', 'no cuenta'], texto: [

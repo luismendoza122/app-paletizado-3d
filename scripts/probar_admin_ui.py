@@ -43,6 +43,10 @@ def responder(route):
         for q in nube['preguntas']:
             if q['id'] == b.get('pregunta_id'): q['estado'] = 'ENSENADA'
         return ok({'ok': True, 'id': 50})
+    if a == 'puente': return ok({'puente': nube.get('puente', {'url': '', 'carpetas': []})})
+    if a == 'guardar_puente':
+        nube['puente'] = {'url': b.get('url', ''), 'carpetas': b.get('carpetas', []), 'por': 'Carlos Prueba'}
+        return ok({'ok': True, 'puente': nube['puente']})
     if a == 'guardar_config':
         nube['config'] = {'datos': b['datos'], 'version': 1}
         return ok({'ok': True, 'version': 1})

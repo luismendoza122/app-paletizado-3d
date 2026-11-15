@@ -32,6 +32,7 @@ jobs:
           sleep 2
           python scripts/probar_ui.py
           python scripts/probar_admin_ui.py
+          python scripts/probar_drive_ui.py
       - name: Revisar archivos
         if: always()
         run: |

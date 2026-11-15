@@ -7,7 +7,7 @@ export const NUBE = {
   url: 'https://nfrqrboqxcpgsagnmwqq.supabase.co',
   llave: 'sb_publishable_73XleY68KOLPlGw_DrlQsA__IQzwPB8',
 };
-const FUNCION = `${NUBE.url}/functions/v1/paletizado`;
+export const FUNCION = `${NUBE.url}/functions/v1/paletizado`;
 
 export function idDispositivo() {
   let id = leer('dispositivo', null);

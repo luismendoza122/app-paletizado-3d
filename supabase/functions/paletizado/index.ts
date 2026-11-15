@@ -18,7 +18,7 @@ const CORS = {
 const json = (d: unknown, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const PASILLOS = ["05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "LA52", "LA53", "LA54", "TE62", "TE63", "FV42", "CO31", "CO32"];
-const RE_CODIGO = /^([A-Z0-9]{2,4})-\d{3}[xyz][1-3][AB]?$/;
+const RE_CODIGO = /^([A-Z0-9]{2,4})-\d{3}[xyz][1-3]$/;
 const CAMPOS = ["CODIGO", "SECCION", "PASILLO", "MODULO", "POSICION", "SUBPOSICION", "SECUENCIA_RUTA", "ARTICULO", "CODIGO_ARTICULO",
   "LARGO_A_MM", "ANCHO_B_MM", "ALTO_H_MM", "PESO_KG", "EMPAQUE", "LIQUIDO", "DELICADO", "MAX_CAJAS_ENCIMA", "NIVEL", "HUECO_ANCHO_MM",
   "HUECO_FONDO_MM", "HUECO_ALTO_MM", "PESO_MAX_KG", "TIPO", "BLOQUEADA", "ESTADO", "OBSERVACIONES", "ACTUALIZADO"];
@@ -276,6 +276,28 @@ Deno.serve(async (req) => {
       const { data, error } = await sb.from("paletizado_admins").insert({ nombre, hash: await sha256("admin:" + limpiarCodigo(codigo)), vence_en }).select("id").single();
       if (error) return json({ error: "No se pudo crear el administrador" }, 500);
       return json({ codigo, id: data.id, nombre, vence_en });
+    }
+
+    // Puente de Google Drive (pestaña Drive): dirección del puente y carpetas
+    if (accion === "puente") {
+      const { data } = await sb.from("paletizado_config").select("datos,actualizado_por,actualizado_en").eq("id", "puente").maybeSingle();
+      const d = (data?.datos || {}) as Record<string, unknown>;
+      return json({ puente: { url: d.url || "", carpetas: Array.isArray(d.carpetas) ? d.carpetas : [], por: data?.actualizado_por || "", actualizado: data?.actualizado_en || null } });
+    }
+    if (accion === "guardar_puente") {
+      const url = String(b.url ?? "").trim();
+      if (url && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) return json({ error: "La dirección del puente debe empezar por https://script.google.com/macros/s/ y terminar en /exec" }, 400);
+      const lista = Array.isArray(b.carpetas) ? b.carpetas.slice(0, 10) : [];
+      const carpetas: { id: string; nombre: string }[] = [];
+      for (const c of lista as Record<string, unknown>[]) {
+        const id = String(c?.id ?? "");
+        if (!/^[A-Za-z0-9_-]{10,80}$/.test(id)) return json({ error: "Carpeta de Drive no válida" }, 400);
+        carpetas.push({ id, nombre: texto(c?.nombre, 120) });
+      }
+      const fila = { id: "puente", datos: { url, carpetas }, version: 1, actualizado_por: yo.nombre, actualizado_en: new Date().toISOString() };
+      const { error } = await sb.from("paletizado_config").upsert(fila);
+      if (error) return json({ error: "No se pudo guardar el puente" }, 500);
+      return json({ ok: true, puente: { url, carpetas, por: yo.nombre, actualizado: fila.actualizado_en } });
     }
 
     if (accion === "sugerencias") {

@@ -1,7 +1,7 @@
 // Pruebas de la toma de datos y del agente
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generarLayout, mezclar, estadoDe, subdividir, catalogo, revisarDatos, aMilimetros, desdeMilimetros } from '../www/js/datos/layout.js';
+import { generarLayout, mezclar, estadoDe, quitarDivisiones, catalogo, revisarDatos, aMilimetros, desdeMilimetros } from '../www/js/datos/layout.js';
 import { articuloDesdeFila } from '../www/js/motor/articulo.js';
 import { calcularIndices } from '../www/js/motor/indice.js';
 import { diagnostico, responder, analizarPasillo } from '../www/js/agente.js';
@@ -23,18 +23,30 @@ test('estado de una posición', () => {
 });
 
 test('mezclar datos de la hoja con el mapa no duplica posiciones', () => {
-  const m = mezclar(generarLayout(), [{ CODIGO: '05-001x1', ARTICULO: 'Detergente', CODIGO_ARTICULO: '9' }, { CODIGO: '05-004x1A', SECCION: 'Seco no alimentos', PASILLO: '05', SECUENCIA_RUTA: 5.1 }]);
-  assert.equal(m.length, 1749);
+  const m = mezclar(generarLayout(), [{ CODIGO: '05-001x1', ARTICULO: 'Detergente', CODIGO_ARTICULO: '9' }]);
+  assert.equal(m.length, 1748);
   assert.equal(m.find((x) => x.CODIGO === '05-001x1').ESTADO, 'INCOMPLETA');
 });
 
-test('dividir una posición crea A y B y la madre deja de contar', () => {
-  const f = subdividir(generarLayout(), '05-004x1');
-  assert.equal(f.find((x) => x.CODIGO === '05-004x1').ESTADO, 'DIVIDIDA');
-  const a = f.find((x) => x.CODIGO === '05-004x1A'), b = f.find((x) => x.CODIGO === '05-004x1B');
-  assert.ok(a && b);
-  assert.ok(Number(a.SECUENCIA_RUTA) < Number(b.SECUENCIA_RUTA));
-  assert.ok(Number(b.SECUENCIA_RUTA) < f.find((x) => x.CODIGO === '05-004x2').SECUENCIA_RUTA);
+test('ya no hay posiciones A y B: las de antes se unen sin perder datos', () => {
+  const art = (n) => ({ ARTICULO: n, CODIGO_ARTICULO: n, LARGO_A_MM: '400', ANCHO_B_MM: '300', ALTO_H_MM: '200', PESO_KG: '5', EMPAQUE: 'CAJA', LIQUIDO: 'NO', DELICADO: 'NO' });
+  // Como lo tenía guardado un celular: 05-001x1 dividida, A con artículo y B vacía
+  let m = mezclar(generarLayout(), [{ CODIGO: '05-001x1', ESTADO: 'DIVIDIDA' }, { CODIGO: '05-001x1A', ...art('ARROZ') }, { CODIGO: '05-001x1B', ESTADO: 'VACIA' }]);
+  assert.ok(!m.some((f) => /[AB]$/.test(f.CODIGO)));
+  assert.equal(m.length, 1748);
+  const x1 = m.find((f) => f.CODIGO === '05-001x1');
+  assert.equal(x1.ARTICULO, 'ARROZ'); assert.equal(x1.ESTADO, 'COMPLETA');
+  // Las dos con artículo: la B pasa a la primera posición libre del módulo (x3)
+  m = mezclar(generarLayout(), [{ CODIGO: '05-004x2', ESTADO: 'DIVIDIDA' }, { CODIGO: '05-004x2A', ...art('AZUCAR') }, { CODIGO: '05-004x2B', ...art('SAL') }]);
+  assert.equal(m.find((f) => f.CODIGO === '05-004x2').ARTICULO, 'AZUCAR');
+  const x3 = m.find((f) => f.CODIGO === '05-004x3');
+  assert.equal(x3.ARTICULO, 'SAL'); assert.equal(x3.ESTADO, 'COMPLETA');
+  assert.ok(x3._pendiente);
+  // Sin artículo en ninguna: la madre queda sin revisar; un Excel con 05-007x1A tampoco crea A/B
+  m = mezclar(generarLayout(), [{ CODIGO: '05-005x1', ESTADO: 'DIVIDIDA' }, { CODIGO: '05-005x1A' }, { CODIGO: '05-007x1A', SECCION: 'Seco no alimentos', PASILLO: '05', SECUENCIA_RUTA: 9.05 }]);
+  assert.equal(m.find((f) => f.CODIGO === '05-005x1').ESTADO, 'SIN REVISAR');
+  assert.ok(!m.some((f) => /[AB]$/.test(f.CODIGO) || f.ESTADO === 'DIVIDIDA'));
+  assert.equal(quitarDivisiones(generarLayout()).quitadas.length, 0);
 });
 
 test('avisos: medidas en otra unidad y peso raro', () => {
@@ -107,7 +119,7 @@ test('medidas en mm, cm o m se guardan en milímetros', () => {
 });
 
 test('módulo con posiciones x3, y1–y3 y z1–z3', async () => {
-  const { agregarPosiciones, posicionesDisponibles, subdividir: dividir } = await import('../www/js/datos/layout.js');
+  const { agregarPosiciones, posicionesDisponibles } = await import('../www/js/datos/layout.js');
   let filas = generarLayout();
   assert.deepEqual(posicionesDisponibles(filas, '05', '001'), ['x3', 'y1', 'y2', 'y3', 'z1', 'z2', 'z3']);
   const r = agregarPosiciones(filas, '05', '001', ['y1', 'x3', 'z3', 'x1']);   // x1 ya existe: no se repite
@@ -117,10 +129,6 @@ test('módulo con posiciones x3, y1–y3 y z1–z3', async () => {
   // Orden de ruta: x1, x2, x3, y1, z3 y luego el módulo 002
   const ruta = filas.filter((f) => f.PASILLO === '05').slice(0, 6).map((f) => f.CODIGO);
   assert.deepEqual(ruta, ['05-001x1', '05-001x2', '05-001x3', '05-001y1', '05-001z3', '05-002x1']);
-  // Una posición nueva también se puede dividir en A y B sin salirse del módulo
-  filas = dividir(filas, '05-001y1');
-  const orden = filas.filter((f) => f.PASILLO === '05' && f.ESTADO !== 'DIVIDIDA').slice(0, 7).map((f) => f.CODIGO);
-  assert.deepEqual(orden, ['05-001x1', '05-001x2', '05-001x3', '05-001y1A', '05-001y1B', '05-001z3', '05-002x1']);
 });
 
 test('posiciones nuevas que llegan de Excel o de la nube sin datos de ruta', () => {
@@ -133,7 +141,7 @@ test('posiciones nuevas que llegan de Excel o de la nube sin datos de ruta', () 
 });
 
 test('borrar posiciones agregadas; x1 y x2 son fijas; sin llenar no cuentan', async () => {
-  const { agregarPosiciones, borrarPosicion, cuenta, subdividir: dividir } = await import('../www/js/datos/layout.js');
+  const { agregarPosiciones, borrarPosicion, cuenta } = await import('../www/js/datos/layout.js');
   let filas = agregarPosiciones(generarLayout(), '05', '001', ['x3', 'y1', 'z1']).filas;
   const contadas = () => filas.filter(cuenta).length;
   assert.equal(contadas(), 1748);                                  // agregadas vacías no cuentan
@@ -144,10 +152,9 @@ test('borrar posiciones agregadas; x1 y x2 son fijas; sin llenar no cuentan', as
   // x1 y x2 no se borran
   assert.equal(borrarPosicion(filas, '05-001x1').borradas.length, 0);
   assert.equal(borrarPosicion(filas, '05-001x2').borradas.length, 0);
-  // y1 dividida en A y B: se borra completa
-  filas = dividir(filas, '05-001y1');
+  // y1 agregada: se borra
   const r = borrarPosicion(filas, '05-001y1');
-  assert.deepEqual(r.borradas.map((f) => f.CODIGO).sort(), ['05-001y1', '05-001y1A', '05-001y1B']);
+  assert.deepEqual(r.borradas.map((f) => f.CODIGO), ['05-001y1']);
   filas = r.filas;
   assert.ok(!filas.some((f) => f.CODIGO.startsWith('05-001y1')));
   // se puede volver a agregar

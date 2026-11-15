@@ -43,7 +43,7 @@ export function generarLayout() {
   return filas;
 }
 
-// Estado de una posición: SIN REVISAR · VACIA · INCOMPLETA · COMPLETA · DIVIDIDA
+// Estado de una posición: SIN REVISAR · VACIA · INCOMPLETA · COMPLETA (DIVIDIDA solo en datos viejos: se une al cargar)
 export function estadoDe(f) {
   if (f.ESTADO === 'DIVIDIDA') return 'DIVIDIDA';
   if (f.ESTADO === 'VACIA') return 'VACIA';
@@ -53,7 +53,7 @@ export function estadoDe(f) {
   return obligatorios.every((k) => String(f[k] ?? '').trim() !== '') ? 'COMPLETA' : 'INCOMPLETA';
 }
 
-// Mezcla filas importadas (de la hoja) sobre el mapa: por CODIGO. Las que no existan (subdivisiones) se agregan.
+// Mezcla filas importadas (de la hoja) sobre el mapa: por CODIGO. Las que no existan (posiciones agregadas) se agregan.
 export function mezclar(base, importadas) {
   const porCodigo = new Map(base.map((f) => [f.CODIGO, { ...f }]));
   for (const f of importadas) {
@@ -65,7 +65,7 @@ export function mezclar(base, importadas) {
   const filas = [...porCodigo.values()];
   completarUbicaciones(filas, porCodigo);
   for (const f of filas) if (f.ESTADO !== 'DIVIDIDA' && f.ESTADO !== 'VACIA') f.ESTADO = estadoDe(f);
-  return ordenar(filas);
+  return quitarDivisiones(ordenar(filas)).filas;
 }
 
 // Ruta de una posición a partir de su código (para posiciones agregadas o que llegan de Excel sin esos datos).
@@ -108,7 +108,7 @@ export const esAgregada = (f) => !!f.POSICION && !POSICIONES_BASE.includes(f.POS
 // ¿Cuenta en el avance? No cuentan las madres divididas ni las agregadas sin llenar o vacías.
 export const cuenta = (f) => f.ESTADO !== 'DIVIDIDA' && !(esAgregada(f) && ['SIN REVISAR', 'VACIA'].includes(estadoDe(f)));
 
-// Borra una posición agregada (y sus mitades A y B si se dividió). Devuelve { filas, borradas }.
+// Borra una posición agregada. Devuelve { filas, borradas }.
 export function borrarPosicion(filas, codigo) {
   const f = filas.find((x) => x.CODIGO === codigo);
   if (!f || !esAgregada(f) || f.SUBPOSICION) return { filas, borradas: [] };
@@ -121,23 +121,60 @@ export function ordenar(filas) {
   return filas.sort((a, b) => (ordenZona.get(a.SECCION) ?? 99) - (ordenZona.get(b.SECCION) ?? 99) || Number(a.SECUENCIA_RUTA) - Number(b.SECUENCIA_RUTA) || String(a.CODIGO).localeCompare(String(b.CODIGO)));
 }
 
-// Divide una posición en A y B. La madre queda DIVIDIDA (no recibe artículo).
-export function subdividir(filas, codigo) {
-  const i = filas.findIndex((f) => f.CODIGO === codigo);
-  if (i < 0 || filas[i].SUBPOSICION) return filas;
-  const madre = filas[i];
-  const sec = Number(madre.SECUENCIA_RUTA);
-  const hijas = ['A', 'B'].map((l, k) => ({
-    CODIGO: `${codigo}${l}`, SECCION: madre.SECCION, PASILLO: madre.PASILLO, MODULO: madre.MODULO, POSICION: madre.POSICION,
-    SUBPOSICION: l, SECUENCIA_RUTA: r2(sec + (k === 0 ? 0.05 : 0.06)), BLOQUEADA: madre.BLOQUEADA || 'NO', ESTADO: 'SIN REVISAR',
-  }));
-  // Si la madre ya tenía artículo, pasa a la A.
-  for (const k of CAMPOS_ARTICULO) if (madre[k] !== undefined && madre[k] !== '') { hijas[0][k] = madre[k]; delete madre[k]; }
-  hijas[0].ESTADO = estadoDe(hijas[0]);
-  madre.ESTADO = 'DIVIDIDA';
-  const nuevas = [...filas];
-  nuevas.splice(i + 1, 0, ...hijas);
-  return nuevas;
+// Las posiciones ya NO se dividen en A y B (solo x1, x2 y las agregadas x3, y1…z3).
+// Si un celular o un Excel trae divisiones de antes, se vuelven a unir:
+// la madre recibe los datos de la A (o de la B si la A está vacía); si las dos tenían artículo,
+// el de la B pasa a la primera posición libre del módulo (x3, y1…) para no perder datos.
+const UBICACION_FIJA = ['CODIGO', 'SECCION', 'PASILLO', 'MODULO', 'POSICION', 'SUBPOSICION', 'SECUENCIA_RUTA'];
+function pasarDatos(de, a) {
+  for (const [k, v] of Object.entries(de)) if (!UBICACION_FIJA.includes(k) && !k.startsWith('_') && v !== '' && v !== undefined) a[k] = v;
+  a._pendiente = true;
+}
+export function quitarDivisiones(filas) {
+  const hijas = filas.filter((f) => /[AB]$/.test(f.CODIGO) && RE_UBICACION.test(f.CODIGO));
+  if (!hijas.length && !filas.some((f) => f.ESTADO === 'DIVIDIDA')) return { filas, quitadas: [], movidas: [] };
+  let resultado = filas.filter((f) => !hijas.includes(f));
+  const quitadas = [];
+  const movidas = [];
+  const grupos = new Map();
+  for (const h of hijas) {
+    const madre = h.CODIGO.slice(0, -1);
+    if (!grupos.has(madre)) grupos.set(madre, []);
+    grupos.get(madre).push(h);
+  }
+  for (const [codMadre, hs] of grupos) {
+    hs.sort((x, y) => x.CODIGO.localeCompare(y.CODIGO));
+    const [, pasillo, modulo, posicion] = codMadre.match(RE_UBICACION);
+    let madre = resultado.find((f) => f.CODIGO === codMadre);
+    if (!madre) {
+      const h = hs[0];
+      madre = { CODIGO: codMadre, SECCION: h.SECCION, PASILLO: pasillo, MODULO: modulo, POSICION: posicion, SUBPOSICION: '', SECUENCIA_RUTA: r2(Number(h.SECUENCIA_RUTA) - 0.05), BLOQUEADA: h.BLOQUEADA || 'NO' };
+      resultado.push(madre);
+    }
+    const conDatos = hs.filter((h) => ['COMPLETA', 'INCOMPLETA'].includes(estadoDe({ ...h, ESTADO: '' })));
+    if (conDatos[0]) {
+      pasarDatos(conDatos[0], madre);
+      madre.ESTADO = estadoDe({ ...madre, ESTADO: '' });
+    } else {
+      madre.ESTADO = hs.length && hs.every((h) => h.ESTADO === 'VACIA') ? 'VACIA' : 'SIN REVISAR';
+      if (madre._version || madre.ESTADO === 'VACIA') madre._pendiente = true;
+    }
+    madre.SUBPOSICION = '';
+    for (const extra of conDatos.slice(1)) {
+      const libre = posicionesDisponibles(resultado, pasillo, modulo)[0];
+      if (!libre) continue;
+      const r = agregarPosiciones(resultado, pasillo, modulo, [libre]);
+      resultado = r.filas;
+      const nueva = resultado.find((f) => f.CODIGO === r.nuevas[0]);
+      pasarDatos(extra, nueva);
+      nueva.ESTADO = estadoDe({ ...nueva, ESTADO: '' });
+      movidas.push({ de: extra.CODIGO, a: nueva.CODIGO });
+    }
+    quitadas.push(...hs);
+  }
+  // Madres que quedaron marcadas como divididas sin hijas
+  for (const f of resultado) if (f.ESTADO === 'DIVIDIDA') { f.ESTADO = estadoDe({ ...f, ESTADO: '' }); if (f._version) f._pendiente = true; }
+  return { filas: ordenar(resultado), quitadas, movidas };
 }
 
 // Catálogo de artículos ya tomados (para autocompletar cuando el mismo artículo está en otra posición).
