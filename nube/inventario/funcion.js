@@ -1,15 +1,15 @@
 // Función "inventario" de Supabase (armada desde app-conteo-estibas/inventario-nube con npm run empaquetar).
 // NO editar a mano: se genera. La función en la nube carga este archivo por su commit fijo.
-// ../../../../tmp/funcion-48muk1/index.ts
+// ../../../../tmp/funcion-xhmaNB/index.ts
 import postgres from "npm:postgres@3.4.5";
 
-// ../../../../tmp/funcion-48muk1/nucleo/rutas.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/rutas.js
 import { z as z3 } from "npm:zod@3.25.76";
 
-// ../../../../tmp/funcion-48muk1/nucleo/inventario.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/inventario.js
 import { z } from "npm:zod@3.25.76";
 
-// ../../../../tmp/funcion-48muk1/nucleo/util.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/util.js
 var ErrorNegocio = class extends Error {
   constructor(mensaje, status = 400, detalle) {
     super(mensaje);
@@ -36,7 +36,7 @@ function nuevoToken() {
 }
 var esRepetido = (e) => /UNIQUE|duplicate key|23505/i.test(`${e?.code || ""} ${e?.message || ""}`);
 
-// ../../../../tmp/funcion-48muk1/nucleo/plantilla.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/plantilla.js
 function modulosPorNumero(final) {
   const lista = [];
   for (let i = 1; i <= final; i++) if (i % 3 !== 0) lista.push(String(i).padStart(3, "0"));
@@ -57,7 +57,7 @@ function evaluarCasilla(texto) {
   return t.split("+").reduce((a, n2) => a + Number(n2), 0);
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/inventario.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/inventario.js
 var textoONulo = (t) => t == null || !String(t).trim() ? null : String(t).trim();
 var id = z.coerce.number().int().positive();
 async function colores(db) {
@@ -961,7 +961,7 @@ async function eventos(db, invId) {
   ).all(invId);
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/dashboard.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/dashboard.js
 var TITULO = "PLANTILLA DE INVENTARIO ATS R10 VALLEDUPAR";
 var esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var num = (n2) => (n2 < 0 ? "\u2212" : "") + String(Math.abs(Math.round(n2 || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -1283,7 +1283,7 @@ footer{color:var(--tenue);font-size:.8rem;text-align:center;margin-top:20px}
 </html>`;
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/excel.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/excel.js
 var AZUL = "FF1F3864";
 var NOMBRE_ESTADO2 = {
   ok: "Cuadra",
@@ -1449,7 +1449,7 @@ function armarLibro(ExcelJS, { r, cruces, eventos: bitacora }, { elaboro } = {})
   return libro;
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/aura.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/aura.js
 import { z as z2 } from "npm:zod@3.25.76";
 var normal = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[¿?¡!.,;:()"'«»]/g, " ").replace(/\s+/g, " ").trim();
 var VACIAS = new Set("a al como con cual cuales de del el en es esta este esto hay la las lo los me mi mis o para por que se si su sus te tu un una uno y yo hago puedo debo quiero necesito favor aura hola dime explica explicame ayudame ayuda".split(" "));
@@ -2315,7 +2315,7 @@ ${p.resumen}`, rapida: { id: local.id, titulo: local.titulo }, ...vacio, propues
   return { chat, paraCopilot, propuestas, aprobar, rechazar, notas, agregarNota, borrarNota, respuestas, guardarRespuesta, borrarRespuesta, vigilantes, aprenderDeCopilot, crearPropuesta: (invId, accion, args) => crearPropuesta(contexto(invId), accion, args) };
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/rutas.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/rutas.js
 var nombreArchivo = (t) => `${t}`.replace(/[^\w\- áéíóúñÁÉÍÓÚÑ]/g, "").trim().replace(/\s+/g, "_") || "inventario";
 var CREADO = /* @__PURE__ */ Symbol("creado");
 var creado = (valor) => ({ [CREADO]: true, valor });
@@ -2503,7 +2503,7 @@ function crearRutas(opciones = {}) {
   };
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/sql.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/sql.js
 var AHORA = "to_char(clock_timestamp() AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI:SS')";
 var HOY = "to_char(clock_timestamp() AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD')";
 var cache = /* @__PURE__ */ new Map();
@@ -2592,7 +2592,7 @@ function convertir(fila, columnas) {
   return fila;
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/adaptador-pg.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/adaptador-pg.js
 function crearAdaptadorPg(ejecutar) {
   let nivel = 0;
   let puntos = 0;
@@ -2662,7 +2662,7 @@ function normalizarError(e) {
   return e;
 }
 
-// ../../../../tmp/funcion-48muk1/nucleo/semilla.js
+// ../../../../tmp/funcion-xhmaNB/nucleo/semilla.js
 var rango = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 var pad = (n2) => String(n2).padStart(2, "0");
 var ESTRUCTURA = [
@@ -2711,7 +2711,7 @@ async function sembrar(db) {
   })();
 }
 
-// ../../../../tmp/funcion-48muk1/index.ts
+// ../../../../tmp/funcion-xhmaNB/index.ts
 var sql = postgres(Deno.env.get("SUPABASE_DB_URL"), { prepare: false, max: 4, idle_timeout: 20 });
 var URL_SB = Deno.env.get("SUPABASE_URL");
 var ANON = Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -2723,9 +2723,9 @@ var CORS = {
 var json = (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { ...CORS, "Content-Type": "application/json" } });
 var manejar = crearRutas({
   cargarExcel: async () => (await import("npm:exceljs@4.4.0")).default,
-  // Lecciones que THEMENDO guarda en su Cuaderno (Copilot); las escritas a mano por Claude no cuentan
+  // Lecciones que THEMENDO guarda en su Cuaderno (Copilot); las guías escritas a mano (origen "manual") no cuentan
   leccionesCopilot: async () => await sql`SELECT id::text, texto, tema, estado FROM public.themendo_lecciones
-      WHERE coalesce(origen, '') <> 'claude-manual' ORDER BY creado DESC LIMIT 300`.catch(() => [])
+      WHERE coalesce(origen, '') <> 'manual' ORDER BY creado DESC LIMIT 300`.catch(() => [])
 });
 function ejecutor(tx) {
   return async (texto, valores) => {
