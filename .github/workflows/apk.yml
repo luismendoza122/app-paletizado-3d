@@ -59,6 +59,12 @@ jobs:
       - name: Renombrar APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk paletizado-3d.apk
 
+      - name: Revisar que Recibo y THEMENDO no vayan dentro de la APK
+        run: |
+          unzip -l paletizado-3d.apk | grep -q "assets/public/index.html" || { echo "La APK no trae la app"; exit 1; }
+          if unzip -l paletizado-3d.apk | grep -E "assets/public/(recibo|themendo|inventario)/"; then echo "Estas páginas deben quedar solo en la web"; exit 1; fi
+          echo "OK: la APK solo trae Paletizado 3D"
+
       - name: Guardar como artefacto
         uses: actions/upload-artifact@v4
         with:

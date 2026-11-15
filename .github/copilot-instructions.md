@@ -48,3 +48,7 @@ npm run apk        # compila la APK en salida\paletizado-3d.apk
 ## Pruebas
 - Toda función nueva del motor o de datos lleva prueba en `test/`.
 - Las pruebas no usan el DOM: la lógica va en módulos puros y `app.js` solo la conecta.
+
+## Páginas solo web
+`www/recibo/`, `www/themendo/` y `www/inventario/` se publican en GitHub Pages pero NO entran en la APK:
+`npm run build` arma `www-apk/` sin esas carpetas y Capacitor usa `www-apk` (ver `capacitor.config.json`).

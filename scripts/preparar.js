@@ -27,3 +27,14 @@ copiar(join(nm, 'three', 'examples', 'jsm', 'controls', 'OrbitControls.js'), joi
 // Lector de Excel (SheetJS)
 copiar(join(nm, 'xlsx', 'dist', 'xlsx.full.min.js'), join(vendor, 'xlsx.full.min.js'));
 console.log('Listo: www/vendor preparado.');
+
+// Copia para la APK: la misma app SIN las páginas que viven solo en la web
+// (Recibo, THEMENDO e Inventario siguen en https://luismendoza122.github.io/app-paletizado-3d/).
+const SOLO_WEB = ['recibo', 'themendo', 'inventario'];
+const apk = join(raiz, 'www-apk');
+rmSync(apk, { recursive: true, force: true });
+cpSync(join(raiz, 'www'), apk, {
+  recursive: true,
+  filter: (ruta) => !SOLO_WEB.some((c) => ruta === join(raiz, 'www', c) || ruta.startsWith(join(raiz, 'www', c) + (process.platform === 'win32' ? '\\' : '/'))),
+});
+console.log('Listo: www-apk preparado para la APK (sin', SOLO_WEB.join(', ') + ').');
