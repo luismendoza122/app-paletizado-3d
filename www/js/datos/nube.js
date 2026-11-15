@@ -1,6 +1,6 @@
 // Conexión con la información compartida (Supabase de la Central de Luis).
 // Todo pasa por la función "paletizado". La llave pública es de solo identificación del proyecto;
-// la función decide qué puede hacer cada quien (enlace de tarea o sesión de Luis).
+// la función decide qué puede hacer cada quien (enlace de tarea, administrador o cuenta principal).
 import { guardar, leer } from './almacen.js';
 
 export const NUBE = {
@@ -24,10 +24,13 @@ export function plataforma() {
 
 export function enLinea() { return navigator.onLine !== false; }
 
-export async function llamar(accion, datos = {}, sesion = null) {
+// acceso: token de la cuenta principal (texto), { token } o { codigo } de un administrador.
+export async function llamar(accion, datos = {}, acceso = null) {
+  const token = typeof acceso === 'string' ? acceso : acceso?.token;
+  const codigo = acceso && typeof acceso === 'object' ? acceso.codigo : null;
   const r = await fetch(FUNCION, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: NUBE.llave, ...(sesion ? { Authorization: `Bearer ${sesion}` } : {}) },
+    headers: { 'Content-Type': 'application/json', apikey: NUBE.llave, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(codigo ? { 'x-admin': codigo } : {}) },
     body: JSON.stringify({ accion, dispositivo: idDispositivo(), ...datos }),
   });
   const cuerpo = await r.json().catch(() => ({}));
@@ -39,7 +42,7 @@ export async function llamar(accion, datos = {}, sesion = null) {
   return cuerpo;
 }
 
-// Inicio de sesión de Luis con su cuenta de la Central (correo y contraseña de Supabase).
+// Cuenta principal (correo y contraseña de la Central). No se muestra a nadie más en la app.
 export async function iniciarSesion(correo, clave) {
   const r = await fetch(`${NUBE.url}/auth/v1/token?grant_type=password`, {
     method: 'POST',
@@ -71,7 +74,17 @@ export async function sesionVigente() {
   }
 }
 
-export function cerrarSesion() { guardar('sesion', null); }
+export function cerrarSesion() { guardar('sesion', null); guardar('admin', null); }
+
+// Administrador con código personal (lo crea la cuenta principal)
+export const adminGuardado = () => leer('admin', null);
+export function guardarAdmin(codigo, nombre) { guardar('admin', { codigo: String(codigo).toUpperCase().trim(), nombre }); }
+export async function accesoAdmin() {
+  const t = await sesionVigente();
+  if (t) return { token: t };
+  const a = adminGuardado();
+  return a?.codigo ? { codigo: a.codigo } : null;
+}
 
 // Enlace de una tarea (abre la página pública en cualquier celular)
 export const PAGINA = 'https://luismendoza122.github.io/app-paletizado-3d/';
@@ -86,5 +99,9 @@ export function tokenDeLaDireccion() {
 export function mensajeWhatsApp(tarea) {
   const texto = `Hola ${tarea.asignado_a}, tienes una tarea de toma de datos en Paletizado 3D: ${tarea.titulo} (pasillos ${tarea.pasillos.join(', ')}).\n`
     + `Abre este enlace en tu celular. Funciona sin internet; al terminar toca "Terminar y enviar". El enlace sirve una sola vez.\n${enlaceTarea(tarea.token)}`;
+  return `https://wa.me/?text=${encodeURIComponent(texto)}`;
+}
+export function mensajeAdmin(nombre, codigo) {
+  const texto = `Hola ${nombre}, quedaste como administrador de Paletizado 3D.\n1. Abre la app: ${PAGINA}\n2. Ve a Tareas → "Entrar como administrador".\n3. Escribe tu código: ${codigo}\nNo compartas el código: es personal.`;
   return `https://wa.me/?text=${encodeURIComponent(texto)}`;
 }

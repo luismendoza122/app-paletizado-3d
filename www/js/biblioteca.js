@@ -47,6 +47,17 @@ export const BIBLIOTECA = [
     '"Ya se usó": la tarea se envió y quedó cerrada. "Venció": pasó la fecha; crea otra. "Ya se abrió en otro celular": el enlace queda atado al primer celular que lo abre. "Anulada": Luis la anuló.'] },
   { tema: 'Tareas', titulo: 'Cuántos usuarios tiene la app', claves: ['usuarios', 'cuantos usuarios', 'descargada', 'celulares', 'instalada'], texto: [
     'En Tareas → "Usuarios de la app" (con sesión de Luis) se ve el total de celulares, cuántos con APK y cuántos por la web, y los activos de los últimos 7 días.'] },
+  { tema: 'Sugerencias', titulo: 'Enviar una sugerencia', claves: ['sugerencia', 'sugerir', 'sugerencias', 'propuesta', 'idea', 'mejorar la app', 'reportar'], texto: [
+    'En la pestaña Sugerencias elige el tipo (mejora de la app, ubicación o reubicación, dato equivocado, agente u otro), escribe la idea y toca "Enviar sugerencia". Funciona sin señal: se envía cuando vuelva la conexión.',
+    'En "Mis sugerencias" ves el estado (nueva, en revisión, aprobada, hecha o descartada) y la respuesta de la administración. Toca "Ver respuestas" para actualizar.'] },
+  { tema: 'Administración', titulo: 'Entrar como administrador', claves: ['administrador', 'admin', 'codigo de administrador', 'entrar', 'permisos'], texto: [
+    'En Tareas → "Entrar como administrador" escribe el código personal que te entregaron (XXXX-XXXX-XXXX). Con él puedes crear y anular tareas, ver los usuarios, bajar y editar la información de todos, publicar los ajustes del palet, responder sugerencias y enseñar al agente.',
+    'El código es personal: no lo compartas. Si lo quitan, deja de funcionar de inmediato. Desde la app no se puede cambiar el código del programa.'] },
+  { tema: 'Administración', titulo: 'Enseñar al agente', claves: ['ensenar', 'leccion', 'aprenda', 'aprender', 'no supo', 'olvidar'], texto: [
+    'Cuando el agente no sabe algo, la pregunta le llega a la administración. En la pestaña Agente → "Enseñar al agente" el administrador escribe la respuesta y toca "Enseñar": la lección llega a todos los celulares.',
+    'También se puede escribir una lección nueva, convertir la respuesta de una sugerencia en lección, u "Olvidar" una que esté mal. Además, cada madrugada el agente recibe una lección nueva de logística (aprendizaje diario).'] },
+  { tema: 'Administración', titulo: 'Ajustes iguales para todos', claves: ['ajustes para todos', 'publicar ajustes', 'aplicar a todos', 'misma configuracion'], texto: [
+    'En Ajustes, un administrador toca "Guardar y aplicar a todos los celulares". Los demás reciben las medidas del palet y el apoyo mínimo la próxima vez que abran la app con señal.'] },
   { tema: 'Reubicar', titulo: 'Plan de reubicación', claves: ['reubicar', 'reubicacion', 'plan', 'movimiento', 'mover', 'slotting'], texto: [
     'La pestaña Reubicar ordena cada pasillo por separado: BASE en los primeros módulos, MEDIO en el centro y TOPE al final, sin cambiar de zona. Mueve lo menos posible.',
     'Si hay "cadenas cerradas" (A va donde B y B donde A) hace falta una ubicación temporal libre. El plan se descarga en Excel; lo aprueba el supervisor y el cambio en el WPMS lo hace el CEDI.'] },

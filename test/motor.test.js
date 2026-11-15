@@ -132,3 +132,21 @@ test('agente: responde preguntas del proyecto con su biblioteca', async () => {
   assert.match(titulo('¿cómo voy en el pasillo 12?'), /pasillo 12/);         // los datos siguen primero
   assert.match(titulo('qué tal el clima'), /No encontré/);
 });
+
+test('agente: usa lo que le enseñó la administración y avisa lo que no sabe', async () => {
+  const { responder, noSupo, fichasEnsenadas } = await import('../www/js/agente.js');
+  const { generarLayout } = await import('../www/js/datos/layout.js');
+  const base = { filas: generarLayout(), posiciones: [], propuesta: null, pedidos: [], palet: { largo: 1200, ancho: 1000, altoBase: 150, alturaMaxTotal: 1800, cargaMax: 1000 } };
+  const pregunta = '¿A qué hora cierra el recibo de proveedores?';
+  let r = responder(pregunta, { ...base, conocimiento: [] });
+  assert.ok(noSupo(r));                                              // no sabe → la app la anota
+  const conocimiento = [{ id: 9, fecha: '2026-11-14', tema: 'Enseñado por administración', titulo: pregunta, contenido: 'El recibo de proveedores cierra a las 4:00 p. m.; después solo con autorización.', origen: 'ensenado' },
+    { id: 8, fecha: '2026-11-14', tema: 'Mejora continua', titulo: 'Poka-yoke', contenido: 'Texto del aprendizaje diario', origen: 'diario' }];
+  assert.equal(fichasEnsenadas(conocimiento).length, 1);
+  r = responder('¿a qué hora cierra el recibo?', { ...base, conocimiento });
+  assert.ok(!noSupo(r));
+  assert.ok(r.join(' ').includes('4:00 p. m.'));
+  assert.ok(r.join(' ').includes('me lo enseñó la administración'));
+  assert.match(responder('¿cómo envío una sugerencia?', { ...base, conocimiento })[0], /sugerencia/i);
+  assert.match(responder('¿cómo entro como administrador?', { ...base, conocimiento })[0], /administrador/i);
+});

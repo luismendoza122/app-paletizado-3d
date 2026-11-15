@@ -1,0 +1,19 @@
+# Prueba manual de administración, sugerencias y aprendizaje contra la nube real.
+name: Probar administración en la nube
+
+on:
+  workflow_dispatch:
+    inputs:
+      codigo:
+        description: Código de un administrador de prueba
+        required: true
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probar
+        env:
+          CODIGO: ${{ inputs.codigo }}
+        run: python3 scripts/probar_admin_nube.py

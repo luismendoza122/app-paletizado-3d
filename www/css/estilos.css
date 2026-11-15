@@ -91,3 +91,8 @@ label.chk input { min-height: 0; width: 22px; height: 22px; }
 .na { float: right; min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid var(--borde); background: #fff; font-size: 13px; font-weight: 600; color: var(--gris); }
 .na.sel { background: var(--naranja); border-color: var(--naranja); color: #fff; }
 input:disabled { background: #eef1f4; color: var(--gris); }
+.sug { border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; margin: 8px 0; background: #fff; }
+.sug p { margin: 6px 0; }
+.sug .respuesta { background: #eef7f1; border-radius: 8px; padding: 6px 8px; }
+.codigo { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 2px; }
+textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--borde); border-radius: 8px; box-sizing: border-box; }

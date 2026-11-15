@@ -11,8 +11,8 @@ import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo }
 import { BIBLIOTECA } from './biblioteca.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo } from './exportar.js';
 import { generarLayout, mezclar, estadoDe, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
-import { diagnostico, responder } from './agente.js';
-import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp } from './datos/nube.js';
+import { noSupo, diagnostico, responder } from './agente.js';
+import { llamar, idDispositivo, plataforma, enLinea, iniciarSesion, sesionVigente, cerrarSesion, tokenDeLaDireccion, enlaceTarea, mensajeWhatsApp, accesoAdmin, adminGuardado, guardarAdmin, mensajeAdmin } from './datos/nube.js';
 
 export const REPO = 'luismendoza122/app-paletizado-3d';
 const URL_APK = `https://github.com/${REPO}/releases/latest/download/paletizado-3d.apk`;
@@ -34,7 +34,11 @@ const estado = {
   conflictos: leer('conflictos', []),    // posiciones que otro cambió al mismo tiempo
   borradas: leer('borradas', {}),        // posiciones agregadas que se borraron: { codigo: { version, pendiente } }
   conocimiento: leer('conocimiento', []),// aprendizaje diario del agente
-  conSesion: !!leer('sesion', null),     // Luis inició sesión
+  conSesion: !!(leer('sesion', null) || leer('admin', null)),   // entró un administrador (cualquiera de los dos tipos)
+  esPropietario: !!leer('sesion', null), // cuenta principal: no se muestra a nadie
+  sugPendientes: leer('sugPendientes', []),   // sugerencias escritas sin señal
+  pregPendientes: leer('pregPendientes', []), // preguntas que el agente no supo, para enviar
+  configVersion: leer('configVersion', 0),    // versión de los ajustes compartidos aplicada
   sincronizando: false,
 };
 
@@ -92,8 +96,8 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.7.0';
-function miNombre() { return estado.tarea?.asignado_a || (estado.conSesion ? 'Luis' : 'Este celular'); }
+const VERSION_APP = '0.8.0';
+function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
 
@@ -141,7 +145,7 @@ async function sincronizar({ cerrar = !!estado.tarea?.terminada } = {}) {
   try {
     let r;
     if (t) r = await llamar('tarea_enviar', { token: t.token, cambios, cerrar });
-    else r = await llamar('guardar', { cambios, por: 'Luis' }, await sesionVigente());
+    else r = await llamar('guardar', { cambios, por: miNombre() }, await accesoAdmin());
     const porCodigo = new Map(estado.filas.map((f) => [f.CODIGO, f]));
     for (const g of r.guardadas || []) {
       if (estado.borradas[g.codigo]) { estado.borradas[g.codigo] = { version: g.version }; continue; }
@@ -215,7 +219,9 @@ function conectarBanner() {
 async function alIniciar() {
   if (enLinea()) {
     llamar('registrar', { id: idDispositivo(), plataforma: plataforma(), version: VERSION_APP, nombre: miNombre() }).catch(() => {});
-    llamar('conocimiento', { limite: 40 }).then((r) => { estado.conocimiento = r.conocimiento || []; guardar('conocimiento', estado.conocimiento); if (pestanaActual === 'agente') mostrar('agente'); }).catch(() => {});
+    cargarConocimiento();
+    llamar('config').then((r) => aplicarConfig(r.config)).catch(() => {});
+    enviarSugerencias(); enviarPendientesAgente();
     if (estado.tarea && !estado.tarea.cerrada) {
       if (estado.tarea.terminada) sincronizar({ cerrar: true }); else if (pendientes().length) sincronizar();
     } else if (estado.conSesion && pendientes().length) sincronizar();
@@ -226,6 +232,7 @@ async function alIniciar() {
 window.addEventListener('online', () => {
   notificar('Volvió la conexión');
   if (estado.tarea?.terminada && !estado.tarea.cerrada) sincronizar({ cerrar: true }); else sincronizar();
+  enviarSugerencias(); enviarPendientesAgente();
 });
 window.addEventListener('offline', () => { notificar('Sin conexión: sigue trabajando, se guarda en el celular'); if (pestanaActual === 'tomar') mostrar('tomar'); });
 window.addEventListener('hashchange', () => { const t = tokenDeLaDireccion(); if (t) abrirTareaDeEnlace(t); });
@@ -367,7 +374,7 @@ const pantallas = {
     const conflictos = estado.conflictos.map((c, i) => `<div class="conflicto"><b>${esc(c.codigo)}</b>: ${esc(c.por || 'Otra persona')} la cambió${c.en ? ` el ${esc(new Date(c.en).toLocaleString('es-CO'))}` : ''}.<br>
       Suya: ${esc(resumenDatos(c.servidor))}<br>Tuya: ${esc(resumenDatos(c.mio))}<br>
       <button class="boton" data-conf="${i}" data-r="mia">Dejar la mía</button><button class="boton sec" data-conf="${i}" data-r="suya">Usar la suya</button></div>`).join('');
-    const modo = estado.tarea ? '' : estado.conSesion ? '<p class="nota">Sesión de Luis: lo que guardes se comparte con todos.</p>' : '<p class="nota">Sin tarea ni sesión: los datos quedan solo en este celular. Para compartirlos, abre el enlace de una tarea o inicia sesión en "Tareas".</p>';
+    const modo = estado.tarea ? '' : estado.conSesion ? '<p class="nota">Modo administrador: lo que guardes se comparte con todos.</p>' : '<p class="nota">Sin tarea ni sesión: los datos quedan solo en este celular. Para compartirlos, abre el enlace de una tarea o inicia sesión en "Tareas".</p>';
     return `${bannerTarea()}${conflictos ? `<section class="tarjeta"><h2>⚠ Cambios al mismo tiempo</h2><p class="nota">Otra persona cambió estas posiciones mientras tú trabajabas. Elige cuál dato queda.</p>${conflictos}</section>` : ''}
     <section class="tarjeta">
       <h2>Tomar datos por posición</h2>${modo}
@@ -390,17 +397,26 @@ const pantallas = {
 
   tareas() {
     if (!estado.conSesion) {
-      return `<section class="tarjeta"><h2>Tareas y usuarios (solo Luis)</h2>
-        <p class="nota">Entra con tu cuenta de la Central de Luis (la misma de Mis APK).</p>
-        <form id="formLogin" class="fila"><label>Correo<input name="correo" type="email" autocomplete="username"></label>
-        <label>Contraseña<input name="clave" type="password" autocomplete="current-password"></label><button class="boton">Entrar</button></form>
+      return `<section class="tarjeta"><h2>Tareas y usuarios (administración)</h2>
+        <p class="nota">Entra como administrador con el código personal que te entregaron.</p>
+        <form id="formLogin"><label>Código de administrador<input name="usuario" autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX-XXXX"></label>
+        <label id="campoClave" hidden>Contraseña<input name="clave" type="password" autocomplete="current-password"></label><button class="boton">Entrar</button></form>
         <div id="loginMsg"></div></section>`;
     }
     const pas = ZONAS.map((z) => `<div class="grupo-pas"><small>${esc(z.zona)}</small>${z.pasillos.map((p) => `<label class="chk"><input type="checkbox" name="pas" value="${p}"> ${p}</label>`).join('')}</div>`).join('');
     const u = estado.usuarios;
     const t = estado.tareas || [];
     const color = { ABIERTA: 'MEDIO', 'EN CURSO': 'TOPE', CERRADA: 'BASE', ANULADA: 'falta' };
-    return `<section class="tarjeta"><h2>Nueva tarea para enviar por WhatsApp</h2>
+    const quien = estado.esPropietario ? 'Administración' : (adminGuardado()?.nombre || 'Administrador');
+    const admins = estado.admins || [];
+    const panelAdmins = estado.esPropietario ? `<section class="tarjeta"><h2>Administradores</h2>
+      <p class="nota">Pueden manejar todo dentro de la app (tareas, datos de todos, ajustes, sugerencias y enseñar al agente). No pueden cambiar el código ni ver esta sección.</p>
+      <form id="formInvitar" class="fila"><label>Nombre<input name="nombre" required placeholder="Ej: Carlos Pérez"></label><button class="boton">Crear administrador</button></form>
+      ${estado.nuevoAdmin ? `<div class="aviso ok"><b>Código de ${esc(estado.nuevoAdmin.nombre)}: <span class="codigo">${esc(estado.nuevoAdmin.codigo)}</span></b><br>Solo se muestra esta vez. Mándaselo por un mensaje privado.<br>
+        <a class="boton" href="${mensajeAdmin(estado.nuevoAdmin.nombre, estado.nuevoAdmin.codigo)}" target="_blank" rel="noopener">Enviar por WhatsApp</a><button class="boton sec" id="copiarCodigoAdmin">Copiar código</button></div>` : ''}
+      ${admins.length ? `<div class="tabla"><table><tr><th>Nombre</th><th>Desde</th><th>Último uso</th><th></th></tr>${admins.map((a) => `<tr><td>${esc(a.nombre)}</td><td>${esc(new Date(a.creado_en).toLocaleDateString('es-CO'))}</td><td>${a.ultimo_uso ? esc(new Date(a.ultimo_uso).toLocaleString('es-CO')) : 'Aún no entra'}</td><td><button class="boton peligro" data-quitar-admin="${esc(a.id)}">Quitar</button></td></tr>`).join('')}</table></div>` : '<p class="nota">Todavía no hay administradores.</p>'}
+    </section>` : '';
+    return `<p class="nota">Entraste como <b>${esc(quien)}</b>.</p>${panelAdmins}<section class="tarjeta"><h2>Nueva tarea para enviar por WhatsApp</h2>
       <form id="formTarea">
         <div class="fila"><label>Para (nombre)<input name="asignado_a" required></label><label>Título<input name="titulo" placeholder="Ej: Toma pasillo 12"></label><label>El enlace dura (días)<input name="dias" type="number" value="3" min="1" max="30"></label></div>
         <p class="nota">Pasillos de la tarea:</p>${pas}
@@ -447,7 +463,7 @@ const pantallas = {
         <p class="nota">Toca un tema para leerlo. También puedes preguntar con tus palabras.</p>
         ${[...new Set(BIBLIOTECA.map((f) => f.tema))].map((tema) => `<h3>${esc(tema)}</h3><div class="rapidas">${BIBLIOTECA.map((f, i) => f.tema === tema ? `<button class="boton sec" data-ficha="${i}">${esc(f.titulo)}</button>` : '').join('')}</div>`).join('')}
       </details>
-    </section>`;
+    </section>${estado.conSesion ? panelEnsenar() : ''}`;
   },
 
   ubicaciones() {
@@ -539,6 +555,42 @@ const pantallas = {
     </section>`;
   },
 
+  sugerencias() {
+    const mias = [...estado.sugPendientes.map((x) => ({ ...x, estado: 'SIN ENVIAR' })), ...(estado.misSug || [])];
+    const cat = ['Mejora de la app', 'Ubicación o reubicación', 'Dato equivocado', 'Agente', 'Otro'];
+    const etq = { NUEVA: 'MEDIO', 'EN REVISION': 'TOPE', APROBADA: 'BASE', HECHA: 'BASE', DESCARTADA: 'falta', 'SIN ENVIAR': 'falta' };
+    const nombreEstado = (e) => ({ 'EN REVISION': 'EN REVISIÓN' }[e] || e);
+    const tarjeta = (x) => `<div class="sug"><div><span class="pill ${etq[x.estado] || ''}">${esc(nombreEstado(x.estado))}</span> <small>${esc(x.categoria)} · ${esc(new Date(x.creado_en).toLocaleDateString('es-CO'))}</small></div>
+      <p>${esc(x.texto)}</p>${x.respuesta ? `<p class="respuesta"><b>Respuesta:</b> ${esc(x.respuesta)}</p>` : ''}</div>`;
+    let admin = '';
+    if (estado.conSesion) {
+      const filtro = estado.sugFiltro || 'NUEVA';
+      const lista = estado.sugAdmin;
+      admin = `<section class="tarjeta"><h2>Sugerencias recibidas (administración)</h2>
+        <div class="rapidas">${['NUEVA', 'EN REVISION', 'APROBADA', 'HECHA', 'DESCARTADA', 'TODAS'].map((e) => `<button class="boton ${e === filtro ? '' : 'sec'}" data-sfiltro="${e}">${esc(nombreEstado(e))}</button>`).join('')}</div>
+        ${!lista ? '<p class="nota">Cargando…</p>' : !lista.length ? '<p class="nota">No hay sugerencias en este estado.</p>' : lista.map((x) => `<form class="sug" data-sug="${esc(x.id)}">
+          <div><span class="pill ${etq[x.estado] || ''}">${esc(nombreEstado(x.estado))}</span> <small>${esc(x.categoria)} · ${esc(x.nombre || 'Sin nombre')} · ${esc(new Date(x.creado_en).toLocaleString('es-CO'))}</small></div>
+          <p>${esc(x.texto)}</p>
+          <div class="fila"><label>Estado<select name="estado">${['NUEVA', 'EN REVISION', 'APROBADA', 'HECHA', 'DESCARTADA'].map((e) => `<option value="${e}" ${e === x.estado ? 'selected' : ''}>${esc(nombreEstado(e))}</option>`).join('')}</select></label>
+          <label>Respuesta para quien la envió<textarea name="respuesta" rows="2">${esc(x.respuesta || '')}</textarea></label></div>
+          <button class="boton">Guardar</button><button class="boton sec" type="button" data-ensenar-sug="${esc(x.id)}">Enseñar al agente</button>
+          ${x.respondido_por ? `<p class="nota">Respondió: ${esc(x.respondido_por)}</p>` : ''}</form>`).join('')}
+      </section>`;
+    }
+    return `<section class="tarjeta"><h2>Sugerencias</h2>
+      <p class="nota">¿Algo para mejorar la app, una ubicación que no cuadra o un dato equivocado? Escríbelo aquí. Lo revisa la administración y te responde en esta misma pantalla. Funciona sin señal: se envía cuando vuelva la conexión.</p>
+      <form id="formSug">
+        <label>Tipo<select name="categoria">${cat.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+        <label>Tu sugerencia<textarea name="texto" rows="4" required minlength="5" maxlength="1000" placeholder="Ej: el pasillo 12 tiene el aceite al final y siempre queda encima de los huevos"></textarea></label>
+        <label>Tu nombre (opcional)<input name="nombre" value="${esc(leer('nombre', ''))}" autocomplete="name"></label>
+        <button class="boton">Enviar sugerencia</button>
+      </form></section>
+    <section class="tarjeta"><h2>Mis sugerencias</h2>
+      ${mias.length ? mias.map(tarjeta).join('') : '<p class="nota">Aún no has enviado sugerencias desde este celular.</p>'}
+      <button class="boton sec" id="refrescarSug">Ver respuestas</button>
+    </section>${admin}`;
+  },
+
   ajustes() {
     const p = estado.palet, r = estado.reglas;
     const campo = (id, t, v, extra = '') => `<label>${t}<input id="${id}" type="number" inputmode="decimal" value="${esc(v)}" ${extra}></label>`;
@@ -551,6 +603,7 @@ const pantallas = {
         ${campo('aV', 'Voladizo permitido (mm)', p.voladizoMax)}${campo('aS', 'Apoyo mínimo de cada caja (%)', Math.round(r.soporteMinimo * 100))}
       </div>
       <button class="boton" id="guardarAjustes">Guardar</button>
+      ${estado.conSesion ? '<button class="boton sec" id="ajustesTodos">Guardar y aplicar a todos los celulares</button><p class="nota">Modo administrador: los demás celulares reciben estos ajustes la próxima vez que abran la app con señal.</p>' : (estado.configVersion ? '<p class="nota">Estos ajustes los definió la administración para todos. Si los cambias aquí, se reemplazan cuando la administración publique unos nuevos.</p>' : '')}
     </section>
     <section class="tarjeta">
       <h2>Datos del equipo</h2>
@@ -680,12 +733,98 @@ function tarjetaEnlace(t) {
 
 async function cargarAdmin() {
   try {
-    const sesion = await sesionVigente();
-    if (!sesion) { estado.conSesion = false; cerrarSesion(); mostrar('tareas'); return; }
-    const [u, t] = await Promise.all([llamar('usuarios', {}, sesion), llamar('tareas', {}, sesion)]);
-    estado.usuarios = u; estado.tareas = t.tareas;
+    const acceso = await accesoAdmin();
+    if (!acceso) { estado.conSesion = false; estado.esPropietario = false; cerrarSesion(); mostrar('tareas'); return; }
+    const [u, t, a] = await Promise.all([llamar('usuarios', {}, acceso), llamar('tareas', {}, acceso), estado.esPropietario ? llamar('admins', {}, acceso) : Promise.resolve(null)]);
+    estado.usuarios = u; estado.tareas = t.tareas; if (a) estado.admins = a.admins;
     if (pestanaActual === 'tareas') mostrar('tareas');
-  } catch (e) { notificar(e.message, 'error'); }
+  } catch (e) {
+    if (e.codigo === 401) { salirAdmin(); notificar('Tu acceso de administrador ya no es válido. Pide un código nuevo.', 'error'); return; }
+    notificar(e.message, 'error');
+  }
+}
+
+// Administración: enseñar al agente lo que no supo, escribir lecciones y quitar las que estén mal
+function panelEnsenar() {
+  const preg = estado.preguntasAdmin;
+  const lecciones = estado.conocimiento || [];
+  return `<section class="tarjeta"><h2>Enseñar al agente (administración)</h2>
+    <p class="nota">Cada día el agente recibe una lección nueva de logística. Además aprende de lo que le enseñes aquí: la lección llega a todos los celulares y el agente la usa para responder.</p>
+    <h3>Preguntas que no supo responder</h3>
+    ${!preg ? '<p class="nota">Cargando…</p>' : !preg.length ? '<p class="nota">No hay preguntas pendientes.</p>' : preg.map((q) => `<form class="sug" data-preg="${q.id}">
+      <p><b>${esc(q.texto)}</b> <small>· ${q.veces} ${q.veces === 1 ? 'vez' : 'veces'}</small></p>
+      <label>Respuesta<textarea name="contenido" rows="3" required minlength="10"></textarea></label>
+      <button class="boton">Enseñar</button><button class="boton sec" type="button" data-ignorar="${q.id}">Ignorar</button></form>`).join('')}
+    <h3>Nueva lección</h3>
+    <form id="formLeccion"><label>Pregunta o tema<input name="titulo" required minlength="4" maxlength="120" placeholder="Ej: ¿A qué hora se cierra el recibo?"></label>
+      <label>Lo que debe responder<textarea name="contenido" rows="3" required minlength="10" maxlength="2000"></textarea></label><button class="boton">Guardar lección</button></form>
+    <details class="mas"><summary>Lo que ya aprendió (${lecciones.length})</summary>
+      ${lecciones.map((k) => `<div class="sug"><small>${esc(k.fecha)} · ${k.origen === 'ensenado' ? 'Enseñado' : 'Aprendizaje diario'} · ${esc(k.tema)}</small><p><b>${esc(k.titulo)}</b></p><p>${esc(k.contenido.slice(0, 300))}${k.contenido.length > 300 ? '…' : ''}</p>${k.id ? `<button class="boton peligro" data-olvidar="${k.id}">Olvidar</button>` : ''}</div>`).join('') || '<p class="nota">Nada todavía.</p>'}
+    </details></section>`;
+}
+
+// ---------- Sugerencias, aprendizaje y ajustes compartidos ----------
+async function enviarSugerencias() {
+  if (!enLinea() || !estado.sugPendientes.length || estado.enviandoSug) return;
+  estado.enviandoSug = true;
+  const lote = [...estado.sugPendientes];
+  const quedan = [];
+  for (const x of lote) {
+    try { await llamar('sugerir', { texto: x.texto, categoria: x.categoria, nombre: x.nombre }); }
+    catch (e) { if (e.codigo === 400 || e.codigo === 429) notificar(e.message, 'error'); else quedan.push(x); }
+  }
+  // quedan las que fallaron por señal + las que se escribieron mientras se enviaba
+  estado.sugPendientes = [...quedan, ...estado.sugPendientes.filter((x) => !lote.includes(x))];
+  guardar('sugPendientes', estado.sugPendientes);
+  estado.enviandoSug = false;
+  await cargarMisSug();
+}
+async function cargarMisSug() {
+  try { const r = await llamar('mis_sugerencias'); estado.misSug = r.sugerencias; if (pestanaActual === 'sugerencias') mostrar('sugerencias'); } catch { /* sin señal */ }
+}
+async function cargarSugAdmin() {
+  try {
+    const f = estado.sugFiltro || 'NUEVA';
+    const r = await llamar('sugerencias', f === 'TODAS' ? {} : { estado: f }, await accesoAdmin());
+    estado.sugAdmin = r.sugerencias; if (pestanaActual === 'sugerencias') mostrar('sugerencias');
+  } catch (e) { if (e.codigo === 401) salirAdmin(); else notificar(e.message, 'error'); }
+}
+async function enviarPendientesAgente() {
+  if (!enLinea() || !estado.pregPendientes.length) return;
+  const lista = estado.pregPendientes;
+  estado.pregPendientes = []; guardar('pregPendientes', []);
+  for (const texto of lista) { try { await llamar('pregunta', { texto }); } catch { /* se pierde solo esa */ } }
+}
+async function cargarConocimiento() {
+  try { const r = await llamar('conocimiento', { limite: 200 }); estado.conocimiento = r.conocimiento || []; guardar('conocimiento', estado.conocimiento); if (pestanaActual === 'agente') mostrar('agente'); } catch { /* sin señal */ }
+}
+async function cargarPreguntasAdmin() {
+  try { const r = await llamar('preguntas', {}, await accesoAdmin()); estado.preguntasAdmin = r.preguntas; if (pestanaActual === 'agente') mostrar('agente'); }
+  catch (e) { if (e.codigo === 401) salirAdmin(); }
+}
+async function ensenarAlAgente(titulo, contenido, preguntaId = null) {
+  try {
+    await llamar('ensenar', { titulo, contenido, pregunta_id: preguntaId }, await accesoAdmin());
+    notificar('Lección guardada: todos los celulares la reciben.', 'ok');
+    await cargarConocimiento(); cargarPreguntasAdmin();
+    return true;
+  } catch (e) { notificar(e.message, 'error'); return false; }
+}
+// Ajustes que la administración publicó para todos
+function aplicarConfig(c) {
+  if (!c?.datos?.palet || c.version <= estado.configVersion) return;
+  estado.palet = { ...estado.palet, ...c.datos.palet };
+  estado.reglas = { ...estado.reglas, ...(c.datos.reglas || {}) };
+  estado.paletConfirmado = true; estado.configVersion = c.version;
+  guardar('palet', estado.palet); guardar('reglas', estado.reglas); guardar('paletConfirmado', true); guardar('configVersion', c.version);
+  recalcular();
+  if (pestanaActual === 'ajustes') mostrar('ajustes');
+}
+
+function salirAdmin() {
+  cerrarSesion();
+  Object.assign(estado, { conSesion: false, esPropietario: false, usuarios: null, tareas: null, admins: null, nuevoAdmin: null, sugAdmin: null, preguntasAdmin: null });
+  if (['tareas', 'sugerencias', 'agente'].includes(pestanaActual)) mostrar(pestanaActual);
 }
 
 function resumenDatos(d = {}) {
@@ -868,7 +1007,9 @@ function csvToma() {
 
 function preguntar(texto) {
   if (!texto.trim()) return;
-  estado.chat = [...(estado.chat || []), { de: 'yo', texto: [texto] }, { de: 'agente', texto: responder(texto, contexto()) }].slice(-20);
+  const respuesta = responder(texto, contexto());
+  if (noSupo(respuesta)) { estado.pregPendientes = [...estado.pregPendientes, texto.slice(0, 300)].slice(-30); guardar('pregPendientes', estado.pregPendientes); enviarPendientesAgente(); }
+  estado.chat = [...(estado.chat || []), { de: 'yo', texto: [texto] }, { de: 'agente', texto: respuesta }].slice(-20);
   mostrar('agente');
   const c = $('#chat'); if (c) c.lastElementChild?.scrollIntoView({ block: 'nearest' });
 }
@@ -917,34 +1058,91 @@ function conectar(tab) {
     });
   }
   if (tab === 'tareas') {
+    // Un solo campo: código de administrador; si se escribe un correo aparece la contraseña (cuenta principal)
+    $('#formLogin input[name="usuario"]')?.addEventListener('input', (e) => { $('#campoClave').hidden = !e.target.value.includes('@'); });
     $('#formLogin')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      try { await iniciarSesion(fd.get('correo'), fd.get('clave')); estado.conSesion = true; mostrar('tareas'); cargarAdmin(); }
-      catch (err) { $('#loginMsg').innerHTML = `<div class="aviso error">${esc(err.message)}</div>`; }
+      const usuario = String(fd.get('usuario') || '').trim();
+      try {
+        if (usuario.includes('@')) {
+          await iniciarSesion(usuario, fd.get('clave'));
+          const r = await llamar('quien', {}, await accesoAdmin());
+          if (r.rol !== 'propietario') { cerrarSesion(); throw new Error('Datos incorrectos'); }
+          Object.assign(estado, { conSesion: true, esPropietario: true });
+        } else {
+          const r = await llamar('quien', {}, { codigo: usuario });
+          if (r.rol !== 'admin') throw new Error('Código no válido o ya fue quitado.');
+          guardarAdmin(usuario, r.nombre);
+          Object.assign(estado, { conSesion: true, esPropietario: false });
+        }
+        mostrar('tareas'); cargarAdmin();
+      } catch (err) { $('#loginMsg').innerHTML = `<div class="aviso error">${esc(err.codigo === 400 || /invalid/i.test(err.message) ? 'Datos incorrectos' : err.message)}</div>`; }
     });
+    $('#formInvitar')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await llamar('invitar_admin', { nombre: new FormData(e.target).get('nombre') }, await accesoAdmin());
+        estado.nuevoAdmin = { nombre: r.nombre, codigo: r.codigo }; cargarAdmin(); mostrar('tareas');
+      } catch (err) { notificar(err.message, 'error'); }
+    });
+    $('#copiarCodigoAdmin')?.addEventListener('click', () => copiar(estado.nuevoAdmin?.codigo || ''));
+    document.querySelectorAll('[data-quitar-admin]').forEach((b) => b.addEventListener('click', async () => {
+      if (!(await confirmar('¿Quitar este administrador? Su código deja de funcionar de inmediato.'))) return;
+      try { await llamar('quitar_admin', { id: b.dataset.quitarAdmin }, await accesoAdmin()); estado.nuevoAdmin = null; cargarAdmin(); } catch (err) { notificar(err.message, 'error'); }
+    }));
     $('#formTarea')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const pasillos = fd.getAll('pas');
       if (!pasillos.length) { notificar('Elige al menos un pasillo', 'error'); return; }
       try {
-        const r = await llamar('crear_tarea', { asignado_a: fd.get('asignado_a'), titulo: fd.get('titulo'), dias: Number(fd.get('dias')), pasillos }, await sesionVigente());
+        const r = await llamar('crear_tarea', { asignado_a: fd.get('asignado_a'), titulo: fd.get('titulo'), dias: Number(fd.get('dias')), pasillos }, await accesoAdmin());
         estado.ultimaTarea = r.tarea; cargarAdmin(); mostrar('tareas');
       } catch (err) { notificar(err.message, 'error'); }
     });
     $('#copiarEnlace')?.addEventListener('click', (e) => copiar(e.target.dataset.enlace));
     document.querySelectorAll('[data-anular]').forEach((b) => b.addEventListener('click', async () => {
       if (!(await confirmar('¿Anular esta tarea? El enlace deja de funcionar.'))) return;
-      try { await llamar('anular_tarea', { id: b.dataset.anular }, await sesionVigente()); cargarAdmin(); } catch (err) { notificar(err.message, 'error'); }
+      try { await llamar('anular_tarea', { id: b.dataset.anular }, await accesoAdmin()); cargarAdmin(); } catch (err) { notificar(err.message, 'error'); }
     }));
     $('#bajarTodo')?.addEventListener('click', async () => {
-      try { const r = await llamar('posiciones', {}, await sesionVigente()); aplicarServidor(r.posiciones); notificar(`Recibidas ${r.posiciones.length} posiciones`); mostrar('tareas'); }
+      try { const r = await llamar('posiciones', {}, await accesoAdmin()); aplicarServidor(r.posiciones); notificar(`Recibidas ${r.posiciones.length} posiciones`); mostrar('tareas'); }
       catch (err) { notificar(err.message, 'error'); }
     });
     $('#subirMio')?.addEventListener('click', () => sincronizar());
-    $('#salirSesion')?.addEventListener('click', () => { cerrarSesion(); estado.conSesion = false; mostrar('tareas'); });
+    $('#salirSesion')?.addEventListener('click', () => salirAdmin());
     if (estado.conSesion && !estado.usuarios) cargarAdmin();
+  }
+  if (tab === 'sugerencias') {
+    $('#formSug').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const nombre = String(fd.get('nombre') || '').trim();
+      if (nombre) guardar('nombre', nombre);
+      estado.sugPendientes = [...estado.sugPendientes, { texto: String(fd.get('texto')).trim(), categoria: fd.get('categoria'), nombre, creado_en: new Date().toISOString() }];
+      guardar('sugPendientes', estado.sugPendientes);
+      notificar(enLinea() ? 'Sugerencia enviada. Gracias.' : 'Sin señal: la sugerencia se envía cuando vuelva la conexión.', 'ok');
+      mostrar('sugerencias');
+      enviarSugerencias();
+    });
+    $('#refrescarSug').addEventListener('click', () => { enviarSugerencias(); cargarMisSug(); });
+    document.querySelectorAll('[data-sfiltro]').forEach((b) => b.addEventListener('click', () => { estado.sugFiltro = b.dataset.sfiltro; estado.sugAdmin = null; mostrar('sugerencias'); cargarSugAdmin(); }));
+    document.querySelectorAll('form[data-sug]').forEach((f) => f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(f);
+      try { await llamar('responder_sugerencia', { id: f.dataset.sug, estado: fd.get('estado'), respuesta: fd.get('respuesta') }, await accesoAdmin()); notificar('Respuesta guardada', 'ok'); cargarSugAdmin(); }
+      catch (err) { notificar(err.message, 'error'); }
+    }));
+    document.querySelectorAll('[data-ensenar-sug]').forEach((b) => b.addEventListener('click', async () => {
+      const f = b.closest('form');
+      const x = (estado.sugAdmin || []).find((s) => s.id === b.dataset.ensenarSug);
+      const respuesta = String(new FormData(f).get('respuesta') || '').trim();
+      if (!x || respuesta.length < 10) { notificar('Escribe primero la respuesta: eso es lo que aprende el agente.', 'error'); return; }
+      await ensenarAlAgente(x.texto.slice(0, 120), respuesta);
+    }));
+    if (!estado.misSug) cargarMisSug();
+    if (estado.conSesion && !estado.sugAdmin) cargarSugAdmin();
   }
   if (tab === 'tomar') {
     $('#tZona').addEventListener('change', (e) => { estado.tomaZona = e.target.value; estado.tomaPasillo = ''; mostrar('tomar'); });
@@ -979,6 +1177,24 @@ function conectar(tab) {
       $('#chat')?.lastElementChild?.scrollIntoView({ block: 'nearest' });
     }));
     $('#formChat').addEventListener('submit', (e) => { e.preventDefault(); preguntar($('#pregunta').value); });
+    document.querySelectorAll('form[data-preg]').forEach((f) => f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = (estado.preguntasAdmin || []).find((x) => String(x.id) === f.dataset.preg);
+      if (q) await ensenarAlAgente(q.texto.slice(0, 120), String(new FormData(f).get('contenido')).trim(), q.id);
+    }));
+    document.querySelectorAll('[data-ignorar]').forEach((b) => b.addEventListener('click', async () => {
+      try { await llamar('ignorar_pregunta', { id: Number(b.dataset.ignorar) }, await accesoAdmin()); cargarPreguntasAdmin(); } catch (err) { notificar(err.message, 'error'); }
+    }));
+    $('#formLeccion')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      if (await ensenarAlAgente(String(fd.get('titulo')).trim(), String(fd.get('contenido')).trim())) e.target.reset();
+    });
+    document.querySelectorAll('[data-olvidar]').forEach((b) => b.addEventListener('click', async () => {
+      if (!(await confirmar('¿Olvidar esta lección? El agente deja de usarla en todos los celulares.'))) return;
+      try { await llamar('olvidar', { id: Number(b.dataset.olvidar) }, await accesoAdmin()); notificar('Lección olvidada', 'ok'); cargarConocimiento(); } catch (err) { notificar(err.message, 'error'); }
+    }));
+    if (estado.conSesion && !estado.preguntasAdmin) cargarPreguntasAdmin();
     $('#diagExcel').addEventListener('click', () => exportarExcel('diagnostico', ['DIAGNOSTICO', 'ARTICULOS', 'REUBICACION']));
     $('#diagCopiar').addEventListener('click', () => copiar(textoDiagnostico(diagnostico(contexto()))));
   }
@@ -1043,6 +1259,14 @@ function conectar(tab) {
       estado.paletConfirmado = true;
       guardar('palet', estado.palet); guardar('reglas', estado.reglas); guardar('paletConfirmado', true);
       notificar('Guardado');
+    });
+    $('#ajustesTodos')?.addEventListener('click', async () => {
+      $('#guardarAjustes').click();
+      try {
+        const r = await llamar('guardar_config', { datos: { palet: estado.palet, reglas: { soporteMinimo: estado.reglas.soporteMinimo } } }, await accesoAdmin());
+        estado.configVersion = r.version; guardar('configVersion', r.version);
+        notificar('Ajustes publicados para todos los celulares', 'ok');
+      } catch (e) { notificar(e.message, 'error'); }
     });
     $('#borrar').addEventListener('click', async () => {
       if (!(await confirmar('¿Borrar todos los datos tomados y los pedidos de este equipo? Primero cópialos a la hoja si los necesitas.'))) return;

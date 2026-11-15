@@ -104,6 +104,17 @@ function buscarArticulo(texto, posiciones) {
   return puntos ? mejor : null;
 }
 
+// Lecciones que enseñó la administración, con la misma forma que las fichas de la biblioteca.
+export function fichasEnsenadas(conocimiento = []) {
+  return conocimiento.filter((k) => k.origen === 'ensenado').map((k) => ({
+    tema: 'Enseñado', titulo: k.titulo, claves: [], texto: [k.contenido, 'Esto me lo enseñó la administración.'],
+  }));
+}
+
+// Respuesta cuando el agente no sabe: la app la anota para que la administración le enseñe.
+export const NO_SE = 'No encontré eso en mi biblioteca.';
+export const noSupo = (respuesta) => Array.isArray(respuesta) && String(respuesta[0] || '').startsWith(NO_SE);
+
 // Busca en el aprendizaje diario las entradas que más se parecen a la pregunta.
 export function buscarConocimiento(pregunta, conocimiento) {
   const palabras = sinTildes(pregunta).split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !['como', 'para', 'esto', 'esta', 'cual', 'cuales', 'donde', 'sobre', 'tiene', 'hacer'].includes(w));
@@ -131,7 +142,8 @@ export function responder(pregunta, ctx) {
   }
 
   // Preguntas de "cómo / qué es / por qué": primero la biblioteca, si no se pregunta por un pasillo, zona o artículo
-  const fichas = buscarEnBiblioteca(pregunta);
+  // Lo que la administración le enseñó va primero; después la biblioteca fija
+  const fichas = buscarEnBiblioteca(pregunta, [...fichasEnsenadas(ctx.conocimiento), ...BIBLIOTECA]);
   const explicativa = /^(como|que es|que son|que significa|para que|por que|porque|cual es|cuales son|explica|se puede|puedo|donde (esta|veo|encuentro)|cuando)\b/.test(t.trim().replace(/^[¿?¡!\s]+/, ''));
   if (fichas.length && fichas[0].puntos >= 3 && (explicativa || fichas[0].puntos >= 6) && !pasillo && !zona && !/donde va|donde ubic|donde pongo|donde deberia/.test(t)) {
     return respuestaBiblioteca(fichas);
@@ -210,7 +222,7 @@ export function responder(pregunta, ctx) {
   const saber = buscarConocimiento(pregunta, ctx.conocimiento || []);
   if (saber.length) return [...saber.flatMap((k) => [`${k.tema} — ${k.titulo} (${k.fecha}):`, k.contenido]), 'Esto viene del aprendizaje diario del agente.'];
 
-  return ['No encontré eso en mi biblioteca. Puedo responder sobre: uso de la app (tomar datos, agregar o borrar posiciones, tareas por WhatsApp, Excel, video), reglas del CEDI (zonas, módulos, ruta, BASE/MEDIO/TOPE), el cálculo del palet, logística (ABC, FEFO, TI-HI, slotting), WPMS, SAP y análisis de datos.',
+  return [`${NO_SE} Le aviso a la administración para que me lo enseñe. Mientras tanto puedo responder sobre: uso de la app (tomar datos, agregar o borrar posiciones, tareas por WhatsApp, Excel, video), reglas del CEDI (zonas, módulos, ruta, BASE/MEDIO/TOPE), el cálculo del palet, logística (ABC, FEFO, TI-HI, slotting), WPMS, SAP y análisis de datos.`,
     'Prueba con otras palabras, por ejemplo: "¿cómo borro una posición?" o "¿qué es el índice de arrume?".'];
 }
 
