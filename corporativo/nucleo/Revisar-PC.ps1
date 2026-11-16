@@ -60,7 +60,7 @@ Agregar ''
 $int = Join-Path $raiz 'TI\integridad.json'
 if (Test-Path -LiteralPath $int) {
   $j = Get-Content -LiteralPath $int -Raw -Encoding UTF8 | ConvertFrom-Json
-  $mal = @($j.archivos | Where-Object { $f = Join-Path $raiz ($_.ruta.Replace('/', '\')); -not (Test-Path -LiteralPath $f) -or (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash.ToLowerInvariant() -ne $_.sha256 })
+  $mal = @($j.archivos | Where-Object { $f = Join-Path $raiz ($_.ruta.Replace('/', '\')); -not (Test-Path -LiteralPath $f) -or ([System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.IO.File]::ReadAllBytes($f)))).Replace('-', '').ToLowerInvariant() -ne $_.sha256 })
   if ($mal.Count -eq 0) { Agregar "Archivos de la app: $($j.archivos.Count) originales." } else { Agregar "Archivos cambiados o faltantes: $(($mal | ForEach-Object { $_.ruta }) -join ', ')" }
 }
 $lineas | Set-Content -LiteralPath $informe -Encoding UTF8

@@ -20,7 +20,7 @@
 | Firma | Los `.ps1` no vienen firmados. Si la empresa exige `AllSigned`, TI puede firmarlos con su certificado: `Set-AuthenticodeSignature -FilePath .\Iniciar-Paletizado.ps1,.\nucleo\*.ps1 -Certificate <cert>`. |
 
 ## Códigos de salida de `Iniciar-Paletizado.ps1`
-0 normal · 2 falta la carpeta app · 3 PowerShell restringido (abre la web) · 4 archivos cambiados (`-SoloRevisar`) · 5 sin puerto libre (abre la web).
+0 normal · 2 falta la carpeta app · 3 PowerShell restringido (abre la web) · 4 archivos cambiados (`-SoloRevisar`) · 5 sin puerto libre (abre la web) · 6 error inesperado (queda en registro.txt y abre la web).
 
 ## Pruebas
 `nucleo\Probar-Paletizado.ps1` (Windows PowerShell 5.1 y PowerShell 7): integridad, tipos MIME, intentos de salir de la carpeta (`../`, `%2f`, `..\`, rutas de Windows), solo lectura, conexiones vacías, 30 pedidos seguidos, que no se vea desde la red, segunda apertura, puerto ocupado y archivo cambiado. En GitHub Actions también se prueba el modo restringido y las pantallas en Chrome.

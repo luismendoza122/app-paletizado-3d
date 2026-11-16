@@ -11,6 +11,7 @@ if "%CODIGO%"=="0" goto fin
 if "%CODIGO%"=="2" goto fin
 if "%CODIGO%"=="3" goto fin
 if "%CODIGO%"=="5" goto fin
+if "%CODIGO%"=="6" goto fin
 echo.
 echo No se pudo iniciar con PowerShell en este PC (codigo %CODIGO%).
 echo Se abre la version web oficial, que funciona igual.

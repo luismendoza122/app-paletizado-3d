@@ -82,6 +82,14 @@ function Read-Configuracion {
   return $conf
 }
 
+function Get-Huella([string]$ruta) {
+  # SHA-256 con .NET (no depende de módulos de PowerShell que TI pueda haber quitado o cambiado)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  $f = [System.IO.File]::OpenRead($ruta)
+  try { return ([System.BitConverter]::ToString($sha.ComputeHash($f))).Replace('-', '').ToLowerInvariant() }
+  finally { $f.Dispose(); $sha.Dispose() }
+}
+
 function Test-Integridad {
   # Compara cada archivo de la app con la huella guardada en TI\integridad.json.
   $lista = Join-Path $raiz 'TI\integridad.json'
@@ -93,13 +101,21 @@ function Test-Integridad {
     $n++
     $ruta = Join-Path $raiz ($a.ruta.Replace('/', '\'))
     if (-not (Test-Path -LiteralPath $ruta)) { $distintos += "$($a.ruta) (falta)"; continue }
-    $h = (Get-FileHash -LiteralPath $ruta -Algorithm SHA256).Hash.ToLowerInvariant()
+    $h = Get-Huella $ruta
     if ($h -ne $a.sha256) { $distintos += $a.ruta }
   }
   return @{ ok = ($distintos.Count -eq 0); revisados = $n; distintos = $distintos }
 }
 
 # ---------- Inicio ----------
+# Cualquier error inesperado queda en el registro y se abre la web oficial, para que nunca quede sin app.
+trap {
+  Write-Registro ("ERROR: " + $_.Exception.Message + " | " + $_.InvocationInfo.PositionMessage)
+  Write-Host "Algo falló al abrir la copia del PC: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host 'Abro la versión web oficial.' -ForegroundColor Yellow
+  try { Open-Web $WEB_OFICIAL $Navegador | Out-Null } catch {}
+  exit 6
+}
 try { $Host.UI.RawUI.WindowTitle = "Paletizado 3D (corporativo) $VERSION" } catch {}
 Write-Paso "Paletizado 3D - copia corporativa $VERSION" 'Cyan'
 
