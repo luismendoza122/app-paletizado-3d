@@ -52,7 +52,7 @@ export function filasDiagnostico(d) {
 export function textoDiagnostico(d) {
   const pct = d.av.total ? Math.round((d.av.revisadas / d.av.total) * 100) : 0;
   const l = [
-    `*Diagnóstico Paletizado 3D – CEDI ATS R10* (${hoy()})`,
+    `*Diagnóstico Paletizado 3D – CEDI* (${hoy()})`,
     `Avance: ${d.av.revisadas} de ${d.av.total} posiciones revisadas (${pct} %).`,
     `Completas ${d.av.COMPLETA} · a medias ${d.av.INCOMPLETA} · vacías ${d.av.VACIA} · sin revisar ${d.av['SIN REVISAR']}.`,
     `Artículos listos para calcular: ${d.listas}.`,

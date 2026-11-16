@@ -1,4 +1,4 @@
-// Mapa de ubicaciones del CEDI ATS R10 Valledupar (confirmado por Luis).
+// Mapa de ubicaciones del CEDI (confirmado por Luis).
 // Cada pasillo: módulos 001–056 sin múltiplos de 3, cada uno con posiciones x1 y x2 (se pueden agregar x3, y1–y3, z1–z3).
 // Ruta: cada pasillo del 001 al 056, de lado a lado; la secuencia empieza en 1 en cada zona.
 

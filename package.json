@@ -3,7 +3,7 @@
   "version": "0.8.4",
   "private": true,
   "type": "module",
-  "description": "Conformación de palets en 3D y reubicación de artículos por pasillo – CEDI ATS R10 Valledupar",
+  "description": "Conformación de palets en 3D y reubicación de artículos por pasillo – CEDI",
   "scripts": {
     "test": "node --test test/*.test.js",
     "build": "node scripts/preparar.js",
