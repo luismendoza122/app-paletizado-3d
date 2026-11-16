@@ -8,7 +8,8 @@
     "test": "node --test test/*.test.js",
     "build": "node scripts/preparar.js",
     "start": "node scripts/servidor.js",
-    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/compilar-apk.ps1"
+    "apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/compilar-apk.ps1",
+    "corporativo": "node scripts/armar-corporativo.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

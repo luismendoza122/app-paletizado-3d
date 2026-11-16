@@ -3,6 +3,8 @@
 # Google simulado (scripts/simular-google.cjs), conecta, envía el Excel y revisa la seguridad del puente.
 # Necesita: npm start (http://localhost:5173) y node. No escribe nada en la nube real.
 import json, sys, time, subprocess, threading, urllib.request
+import os, tempfile
+GS = os.path.join(tempfile.gettempdir(), 'puente-paletizado.gs')
 from http.server import BaseHTTPRequestHandler, HTTPServer
 sys.path.insert(0, 'scripts')
 from playwright.sync_api import sync_playwright
@@ -94,8 +96,8 @@ with sync_playwright() as p:
     codigo = pg.input_value('#drCodigo')
     ok('1PALETIZADOAAAAAAAAAAAAAAA' in codigo and '1PALETIZADOBBBBBBBBBBBBBBB' in codigo and '"metodo": "post"' in codigo, 'con las direcciones se crea el código del puente (2 carpetas)')
     pg.click('#drCopiar'); ok(pg.evaluate('navigator.clipboard.readText()') == codigo, 'copiar código')
-    open('/tmp/puente-paletizado.gs', 'w').write(codigo)
-    sim = subprocess.Popen(['node', 'scripts/simular-google.cjs', '/tmp/puente-paletizado.gs', '3200', 'http://127.0.0.1:3300/']); time.sleep(1.5)
+    open(GS, 'w', encoding='utf-8').write(codigo)
+    sim = subprocess.Popen(['node', 'scripts/simular-google.cjs', GS, '3200', 'http://127.0.0.1:3300/']); time.sleep(1.5)
     pg.fill('#drUrl', 'https://script.google.com/macros/s/PALETIZADO_1/exec'); pg.click('#drGuardar')
     ok(esperar(pg, lambda: 'Conectado' in pg.inner_text('#drEstado')), 'guardar y probar: conectado con sus carpetas')
     ok(nube['puente']['url'].endswith('/exec') and len(nube['puente']['carpetas']) == 2, 'la dirección del puente queda guardada en la nube')

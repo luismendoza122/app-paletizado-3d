@@ -1,0 +1,40 @@
+PALETIZADO 3D - COPIA CORPORATIVA (CEDI ATS R10 Valledupar)
+==========================================================
+
+Es la misma app Paletizado 3D, pero se abre desde este PC sin instalar nada y sin
+permisos de administrador. La app original (página web y APK) no se toca.
+
+ABRIR
+  1. Si llegó en un .zip: clic derecho > Extraer todo (no la abras desde dentro del zip).
+  2. Doble clic en  Iniciar-Paletizado.cmd
+  3. Se abre la app en una ventana propia de Chrome (o de Edge si no hay Chrome).
+  4. Deja abierta la ventana negra (puedes minimizarla). Para salir, ciérrala.
+
+  Después de abrirla una vez, la app también funciona sin señal.
+
+SI ALGO NO ABRE
+  - Doble clic en  Revisar-PC.cmd : revisa lo que permite TI en este PC y deja un informe
+    en %LOCALAPPDATA%\Paletizado3D-Corporativo\informe-pc.txt
+  - Si TI bloquea PowerShell, el lanzador abre solo la página web oficial (funciona igual):
+    https://luismendoza122.github.io/app-paletizado-3d/
+    También está el acceso directo "Paletizado web oficial".
+  - Si Windows muestra "Windows protegió su PC": Más información > Ejecutar de todas formas,
+    o clic derecho en el .zip > Propiedades > Desbloquear, antes de extraer.
+
+SE ADAPTA SOLA AL PC
+  - Usa Chrome; si no hay, Microsoft Edge; si no, el navegador predeterminado.
+  - Usa el puerto 8765; si está ocupado, busca otro y lo recuerda (así no se pierden los datos).
+  - Si PowerShell está restringido por TI (AppLocker/WDAC), abre la web oficial.
+  - El proxy de la empresa lo maneja el navegador; el script no sale a internet.
+  - Revisa al abrir que ningún archivo de la app haya sido cambiado.
+
+CAMBIAR AJUSTES (opcional)
+  configuracion.json:  "puerto": 8765   "navegador": "auto" | "chrome" | "edge" | "predeterminado"
+
+DATOS
+  - Lo que tomas queda en el navegador de este PC (y en la nube compartida, como en la app original).
+  - El registro y el puerto quedan en %LOCALAPPDATA%\Paletizado3D-Corporativo
+  - Nada se guarda en Archivos de programa ni en el registro de Windows.
+
+PARA TI:  carpeta TI\  (ficha técnica y huellas SHA-256 de cada archivo)
+COPILOT:  carpeta copilot\  (cómo crear el agente de Paletizado en Microsoft 365 Copilot)

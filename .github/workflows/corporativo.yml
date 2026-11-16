@@ -1,0 +1,100 @@
+# Arma y prueba la copia corporativa (PowerShell) en un Windows real y guarda el paquete probado
+# en la rama corporativo-paquete (Paletizado3D-Corporativo.zip). La app original no se toca.
+name: Copia corporativa (Windows)
+
+on:
+  push:
+    branches: ['corporativo']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Preparar app y armar la copia
+        shell: pwsh
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+          npm run build
+          node scripts/armar-corporativo.mjs
+
+      - name: Pruebas en Windows PowerShell 5.1 (el de los PCs de la empresa)
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion
+          & .\salida\Paletizado3D-Corporativo\nucleo\Probar-Paletizado.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Pruebas en PowerShell 7
+        shell: pwsh
+        run: |
+          & ./salida/Paletizado3D-Corporativo/nucleo/Probar-Paletizado.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Prueba del .cmd (doble clic) como usuario normal
+        shell: cmd
+        run: |
+          cd salida\Paletizado3D-Corporativo
+          start "" /b cmd /c Iniciar-Paletizado.cmd -Navegador ninguno -Puerto 18950 -ArchivoParar "%TEMP%\parar-cmd.txt"
+          powershell -NoProfile -Command "for($i=0;$i -lt 60;$i++){try{$r=Invoke-WebRequest http://127.0.0.1:18950/__estado -UseBasicParsing -TimeoutSec 2; Write-Host $r.Content; exit 0}catch{Start-Sleep -Milliseconds 500}}; exit 1"
+          if errorlevel 1 exit /b 1
+          echo parar> "%TEMP%\parar-cmd.txt"
+
+      - name: Pantallas en Chrome contra la copia (mismas pruebas que la app original)
+        shell: pwsh
+        run: |
+          pip install playwright openpyxl
+          python -m playwright install chromium
+          $p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','salida\Paletizado3D-Corporativo\Iniciar-Paletizado.ps1','-Navegador','ninguno','-Puerto','5173','-ArchivoParar',"$env:TEMP\parar-ui.txt" -PassThru -WindowStyle Hidden
+          for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest http://127.0.0.1:5173/__estado -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep -Milliseconds 500 } }
+          $env:PYTHONIOENCODING = 'utf-8'
+          python scripts/probar_ui.py; if ($LASTEXITCODE -ne 0) { exit 1 }
+          python scripts/probar_admin_ui.py; if ($LASTEXITCODE -ne 0) { exit 1 }
+          python scripts/probar_drive_ui.py; if ($LASTEXITCODE -ne 0) { exit 1 }
+          'parar' | Set-Content "$env:TEMP\parar-ui.txt"
+          $p.WaitForExit(15000) | Out-Null
+
+      - name: Modo restringido de TI (AppLocker/WDAC simulado)
+        shell: powershell
+        run: |
+          [Environment]::SetEnvironmentVariable('__PSLockdownPolicy', '4', 'Machine')
+          try {
+            $p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','salida\Paletizado3D-Corporativo\Iniciar-Paletizado.ps1','-Navegador','ninguno','-Puerto','18960' -PassThru -Wait -WindowStyle Hidden
+            $modo = & powershell -NoProfile -Command '$ExecutionContext.SessionState.LanguageMode'
+            Write-Host "Modo de un PowerShell nuevo: $modo  -> salida del lanzador: $($p.ExitCode)"
+            if ($modo -ne 'ConstrainedLanguage') { Write-Host 'Este Windows no aplicó el modo restringido; la prueba no aplica.' }
+            elseif ($p.ExitCode -ne 3) { Write-Host 'MAL: esperaba salida 3 (abrir la web oficial)'; exit 1 }
+            else { Write-Host 'BIEN: en modo restringido abre la web oficial y no se cae.' }
+          } finally {
+            [Environment]::SetEnvironmentVariable('__PSLockdownPolicy', $null, 'Machine')
+          }
+
+      - name: Guardar el paquete probado
+        shell: pwsh
+        run: |
+          Compress-Archive -Path salida\Paletizado3D-Corporativo -DestinationPath Paletizado3D-Corporativo.zip -Force
+          $h = (Get-FileHash Paletizado3D-Corporativo.zip -Algorithm SHA256).Hash.ToLower()
+          git config user.name luismendoza122
+          git config user.email luismendoza122@users.noreply.github.com
+          $tmp = Join-Path $env:RUNNER_TEMP 'paquete'
+          New-Item -ItemType Directory -Force $tmp | Out-Null
+          Copy-Item Paletizado3D-Corporativo.zip $tmp
+          Set-Content (Join-Path $tmp '.gitattributes') '* binary'
+          Set-Content (Join-Path $tmp 'version.txt') "$(Get-Content salida\Paletizado3D-Corporativo\TI\integridad.json -Raw | ConvertFrom-Json | Select-Object -ExpandProperty version)  sha256 $h  commit $env:GITHUB_SHA"
+          Set-Location $tmp
+          git init -q -b corporativo-paquete
+          git add -A
+          git commit -q -m "Paquete corporativo probado ($env:GITHUB_SHA)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" corporativo-paquete
