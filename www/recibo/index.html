@@ -605,7 +605,7 @@ const CRIT = [
   {k:'emb', t:'Embalaje',              s:'Emb',    a:'Cumple', b:'No cumple'},
   {k:'est', t:'Estiba',                s:'Est',    a:'Cumple', b:'No cumple'},
   {k:'con', t:'Conteo Cx recibidas',   s:'Conteo', a:'Cumple', b:'No cumple'},
-  {k:'cant',t:'Cant. Cx verificadas',  s:'Cant',   a:'OK',     b:'Diferencia'},
+  {k:'cant',t:'Cant. Cx verificadas',  s:'Cant',   a:'Cumple', b:'No cumple'},
   {k:'col', t:'Color estiba',          s:'Color',  a:'Cumple', b:'No cumple'},
   {k:'ven', t:'Fecha vencimiento',     s:'Venc',   a:'OK',     b:'Diferencia'}
 ];
@@ -2729,6 +2729,8 @@ async function dLimpiar(parentId, nuevoId, coincide){
     for (const f of (r.files || [])) if (f && f.id && f.id !== nuevoId && f.mimeType !== FOLDER_MIME && coincide(f.title || '')) { try { await dcall('trash_file', {fileId: f.id}); } catch {} }
   } catch {}
 }
+// Sube este número cuando cambie el formato (encabezados, columnas) para rehacer en Drive los archivos ya subidos
+const FORMATO_DRIVE = 2; // 2: "Cant. Cx verificadas" pasa de OK/Diferencia a Cumple/No cumple
 async function subirDrive(manual){
   if (!DV.mcp) { renderDrive(); return; }
   if (DV.busy) { DV.again = true; return; }
@@ -2739,6 +2741,7 @@ async function subirDrive(manual){
   const info = DV.info = Object.assign({semanas: {}, fotoSems: {}}, JSON.parse(JSON.stringify(DV.info || {})));   // los datos de la nube llegan congelados
   if (!info.hist && info.fileId) info.hist = {fileId: info.fileId, subido: info.subido || 0, dia: ''};   // versión anterior: un solo archivo
   let hechos = 0;
+  const rehacer = (info.formato || 1) < FORMATO_DRIVE;
   try {
     // 1) carpetas
     if (!info.semanasId) { info.semanasId = await dCarpeta('Semanas', DRIVE.folderId); await dGuardarInfo(); }
@@ -2768,7 +2771,7 @@ async function subirDrive(manual){
       if (!sem) continue;
       const cambio = Math.max(0, ...[...new Set(rows.map(r => r.p))].map(p => p.actualizado || 0));
       const prev = info.semanas[sem], cerrada = sem < actual;
-      const toca = !prev || !prev.fileId || cambio > (prev.subido || 0) || (cerrada && !prev.cerrada) || (manual && !cerrada);
+      const toca = rehacer || !prev || !prev.fileId || cambio > (prev.subido || 0) || (cerrada && !prev.cerrada) || (manual && !cerrada);
       if (!toca) continue;
       const f0 = rows.map(r => r.fecha).filter(Boolean).sort()[0];
       const base = semTitulo(sem, f0), titulo = base + (cerrada ? '' : ' - en curso') + '.xlsx';
@@ -2784,9 +2787,9 @@ async function subirDrive(manual){
     for (const pl of activas().slice().sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))) {
       if (!pl.filas || !pl.filas.length) continue;
       const prev = info.planillas[pl.id];
-      if (prev && prev.fileId && (pl.actualizado || 0) <= (prev.subido || 0)) continue;
+      if (!rehacer && prev && prev.fileId && (pl.actualizado || 0) <= (prev.subido || 0)) continue;
       const aud = (pl.auditor && pl.auditor.nombre || '').trim();
-      const titulo = ('Planilla ' + (pl.fecha || 'sin fecha') + (aud ? ' - ' + aud : '') + ' - ' + pl.filas.length + ' conferencias').replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf';
+      const titulo = ('Planilla ' + (pl.fecha || 'sin fecha') + (aud ? ' - ' + aud : '') + ' - ' + filasDe(pl).length + ' conferencias').replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf';
       paso('Subiendo ' + titulo.replace(/\.pdf$/, '') + '…');
       let blob = await pdfPlanilla(pl, true), conFotos = true;
       if (blob.size > LIMITE_LINEA) { blob = await pdfPlanilla(pl, false); conFotos = false; }
@@ -2797,7 +2800,7 @@ async function subirDrive(manual){
     }
     // 4) historial completo: una vez al día (al primer cambio del día) o cuando se pide a mano
     const h = info.hist;
-    if (manual || !h || !h.fileId || (h.dia !== today() && ultimoCambio() > (h.subido || 0))) {
+    if (manual || rehacer || !h || !h.fileId || (h.dia !== today() && ultimoCambio() > (h.subido || 0))) {
       paso('Subiendo el historial completo…');
       const blob = await xlsParaDrive(todas, {periodo: 'Historial completo · ' + exRango(todas), nombre: 'historial', links});
       const f = await dSubirXlsx(DRIVE.titulo, DRIVE.folderId, blob);
@@ -2806,6 +2809,7 @@ async function subirDrive(manual){
       await dGuardarInfo(); hechos++;
       await dLimpiar(DRIVE.folderId, f.id, t => /Historial completo/i.test(t));
     }
+    if (rehacer) { info.formato = FORMATO_DRIVE; await dGuardarInfo(); }
     if (manual) toast(hechos ? 'Drive actualizado' : 'Drive ya estaba al día');
   } catch (e) {
     DV.msg = driveErr(e); DV.msgTipo = 'bad'; console.error(e);
