@@ -186,8 +186,9 @@ table.t tr.click:hover td{background:var(--surface-2)}
 .paper .ph .tt{font-weight:700;font-size:13px;text-align:center;letter-spacing:.02em}
 .paper .ph .r{text-align:right}
 .paper table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px}
-.paper th,.paper td{border:1px solid var(--paper-line);padding:2px 3px;height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--paper-ink)}
-.paper th{background:var(--paper-head);font-size:8.5px;text-align:center;white-space:normal;line-height:1.1}
+.paper th,.paper td{border:1px solid var(--paper-line);padding:2px 3px;height:22px;color:var(--paper-ink);white-space:normal;overflow-wrap:anywhere;line-height:1.15;vertical-align:middle}
+.paper th{background:var(--paper-head);font-size:8.5px;text-align:center;white-space:normal;overflow-wrap:normal;line-height:1.1}
+.paper thead tr:nth-child(2) th{font-size:7px;padding:2px 1px}
 .paper td.c{text-align:center;font-weight:700}
 .paper td.c.nc{color:var(--paper-bad)}
 .paper td.m{font-family:"Courier New",monospace}
@@ -1749,6 +1750,8 @@ function tablaHist(fs){
 }
 
 // ---------- hoja para imprimir (vista previa) ----------
+const descDe = f => f.descripcion || (f.categoria ? '(' + f.categoria + ')' : '');   // si no hay descripción se muestra la categoría
+const extrasDe = pl => pl ? [['Revisado por calidad', pl.calidad], ['Notas generales', pl.notas]].filter(x => x[1] && String(x[1]).trim()) : [];
 function marcas(v){ return v === 'ok' ? ['X', ''] : v === 'nc' ? ['', 'X'] : v === 'na' ? ['N/V', ''] : ['', '']; }
 function evidRefs(pl){ const m = new Map(); let k = 0; if (pl) filasDe(pl).forEach(f => { const n = (f.fotos || []).length; if (n) { m.set(f.id, n === 1 ? 'E' + (k + 1) : 'E' + (k + 1) + '-' + (k + n)); k += n; } }); return m; }
 function renderPrint(){
@@ -1761,19 +1764,20 @@ function renderPrint(){
   $('#prNote').textContent = pl ? 'El PDF sale en hoja carta horizontal, como el formato físico. Al descargarlo te pregunto si quieres incluir las fotos de evidencia.' : 'Plantilla en blanco con ' + S.cfg.filas + ' filas, para llenar a mano. Se descarga en PDF, hoja carta horizontal.';
   const refs = evidRefs(pl);
   const rows = pl ? filasDe(pl) : Array.from({length: S.cfg.filas}, () => null);
-  const head = '<tr><th rowspan="2" style="width:52px">Fecha</th><th rowspan="2" style="width:76px">Operador de recibo</th><th rowspan="2" style="width:98px">Proveedor</th><th rowspan="2" style="width:92px">Etiqueta</th><th rowspan="2" style="width:44px">SAP</th><th rowspan="2" style="width:106px">Descripción</th>' +
-    CRIT.map(c => '<th colspan="2">' + esc(c.t) + '</th>').join('') + '<th rowspan="2" style="width:70px">Observaciones</th><th rowspan="2" style="width:32px">Evid.</th></tr><tr>' +
+  const head = '<tr><th rowspan="2" style="width:52px">Fecha</th><th rowspan="2" style="width:74px">Operador de recibo</th><th rowspan="2" style="width:90px">Proveedor</th><th rowspan="2" style="width:84px">Etiqueta</th><th rowspan="2" style="width:42px">SAP</th><th rowspan="2" style="width:100px">Descripción</th>' +
+    CRIT.map(c => '<th colspan="2">' + esc(c.t) + '</th>').join('') + '<th rowspan="2" style="width:136px">Observaciones</th><th rowspan="2" style="width:32px">Evid.</th></tr><tr>' +
     CRIT.map(c => '<th>' + c.a + '</th><th>' + c.b + '</th>').join('') + '</tr>';
   const body = rows.map(f => {
     if (!f) return '<tr>' + '<td></td>'.repeat(20) + '</tr>';
-    return '<tr><td>' + esc(fmtDs(f.fecha)) + '</td><td>' + esc(f.operador) + '</td><td>' + esc(f.proveedor) + '</td><td class="m">' + esc(f.etiqueta) + '</td><td>' + esc(f.sap) + '</td><td>' + esc(f.descripcion) + '</td>' +
+    return '<tr><td>' + esc(fmtDs(f.fecha)) + '</td><td>' + esc(f.operador) + '</td><td>' + esc(f.proveedor) + '</td><td class="m">' + esc(f.etiqueta) + '</td><td>' + esc(f.sap) + '</td><td>' + esc(descDe(f)) + '</td>' +
       CRIT.map(c => { const [a, b] = marcas(f[c.k]); return '<td class="c">' + a + '</td><td class="c nc">' + b + '</td>'; }).join('') +
-      '<td title="' + esc(f.obs) + '">' + esc(f.obs) + '</td><td class="c">' + (refs.get(f.id) || '') + '</td></tr>';
+      '<td>' + esc(f.obs) + '</td><td class="c">' + (refs.get(f.id) || '') + '</td></tr>';
   }).join('');
   const a = pl ? pl.auditor : {}, co = pl ? pl.coord : {};
   $('#paper').innerHTML =
     '<div class="ph"><div>' + esc((pl && pl.sede) || S.cfg.sede || '') + '</div><div class="tt">' + esc(S.cfg.titulo) + '</div><div class="r">Fecha planilla: ' + (pl ? fmtD(pl.fecha) : '____/____/______') + '</div></div>' +
     '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+    (extrasDe(pl).length ? '<div class="notes">' + extrasDe(pl).map(x => '<b>' + x[0] + ':</b> ' + esc(x[1])).join('\n') + '</div>' : '') +
     '<div class="pf"><div><h4>Información auditor</h4>' + ln('Nombre', a.nombre) + ln('SAP', a.sap) + ln('Fecha', pl ? fmtD(pl.fecha) : '') + '</div>' +
     '<div><h4>Revisión Coordinador Layout</h4>' + ln('Nombre', co.nombre) + ln('SAP', co.sap) + ln('Fecha', fmtD(co.fecha)) + '</div></div>';
   fitPaper();
@@ -1823,9 +1827,9 @@ async function pdfPlanilla(pl, conEvid){
      ...CRIT.map(c => ({content:c.t, colSpan:2})), {content:'Observaciones', rowSpan:2}, {content:'Evid.', rowSpan:2}],
     CRIT.flatMap(c => [c.a, c.b])
   ];
-  const body = rows.map(f => f ? [fmtDs(f.fecha), f.operador || '', f.proveedor || '', f.etiqueta || '', f.sap || '', f.descripcion || '', ...CRIT.flatMap(c => marcas(f[c.k])), f.obs || '', refs.get(f.id) || ''] : Array(20).fill(''));
-  const cs = {0:{cellWidth:14}, 1:{cellWidth:20}, 2:{cellWidth:26}, 3:{cellWidth:24, font:'courier'}, 4:{cellWidth:12}, 5:{cellWidth:28}, 18:{cellWidth:18}, 19:{cellWidth:8, halign:'center'}};
-  for (let i = 6; i < 18; i++) cs[i] = {cellWidth:9.4, halign:'center', fontStyle:'bold'};
+  const body = rows.map(f => f ? [fmtDs(f.fecha), f.operador || '', f.proveedor || '', f.etiqueta || '', f.sap || '', descDe(f), ...CRIT.flatMap(c => marcas(f[c.k])), f.obs || '', refs.get(f.id) || ''] : Array(20).fill(''));
+  const cs = {0:{cellWidth:14}, 1:{cellWidth:20}, 2:{cellWidth:26}, 3:{cellWidth:24, font:'courier'}, 4:{cellWidth:12}, 5:{cellWidth:28}, 18:{cellWidth:30}, 19:{cellWidth:8, halign:'center'}};
+  for (let i = 6; i < 18; i++) cs[i] = {cellWidth:8.4, halign:'center', fontStyle:'bold'};
   const encabezado = () => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(17);
     doc.text(S.cfg.titulo || '', W / 2, 13, {align:'center'});
@@ -1847,6 +1851,12 @@ async function pdfPlanilla(pl, conEvid){
     }
   });
   let y = doc.lastAutoTable.finalY + 7;
+  for (const [t, v] of extrasDe(pl)) {   // calidad y notas generales de la planilla
+    const ls = doc.splitTextToSize(t + ': ' + String(v).replace(/\n+/g, ' · '), W - 2 * M);
+    if (y + ls.length * 3.6 > H - 14) { doc.addPage(); encabezado(); y = 22; }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(17); doc.text(ls, M, y); y += ls.length * 3.6 + 2;
+  }
+  if (extrasDe(pl).length) y += 3;
   if (y > H - 34) { doc.addPage(); encabezado(); y = 22; }
   const bloque = (x, titulo, vals) => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text(titulo, x, y);
@@ -1915,15 +1925,16 @@ async function xlsPlanilla(pl){
   // datos
   let r = 6; const thumbsJobs = [];
   filasDe(pl).forEach(f => {
-    const vals = [fmtD(f.fecha), f.operador || '', f.proveedor || '', f.etiqueta || '', f.sap || '', f.descripcion || '', ...CRIT.flatMap(c => marcas(f[c.k])), f.obs || '', refs.get(f.id) || ''];
+    const vals = [fmtD(f.fecha), f.operador || '', f.proveedor || '', f.etiqueta || '', f.sap || '', descDe(f), ...CRIT.flatMap(c => marcas(f[c.k])), f.obs || '', refs.get(f.id) || ''];
     vals.forEach((v, i) => {
       const cell = ws.getCell(r, i + 1); cell.value = v; cell.border = box;
-      cell.alignment = {vertical:'middle', wrapText: i === 18 || i === 5 || i === 2, horizontal: (i >= 6 && i < 18) ? 'center' : 'left'};
+      cell.alignment = {vertical:'middle', wrapText: i === 18 || i === 5 || i === 2 || i === 1, horizontal: (i >= 6 && i < 18) ? 'center' : 'left'};
       cell.font = {size:9, bold: i >= 6 && i < 18, color: (i >= 6 && i < 18 && (i - 6) % 2 === 1 && v === 'X') ? {argb:'FFB3261E'} : undefined};
       if (i === 3) cell.font = {size:9, name:'Consolas'};
     });
     const nf = (f.fotos || []).length;
-    ws.getRow(r).height = nf ? 50 : 20;
+    const lineas = Math.max(Math.ceil((f.obs || '').length / 38), Math.ceil(descDe(f).length / 32), Math.ceil((f.proveedor || '').length / 27), 1);   // que el texto largo no quede oculto
+    ws.getRow(r).height = Math.max(nf ? 50 : 20, lineas * 12 + 6);
     if (nf) thumbsJobs.push({r, f});
     r++;
   });
@@ -1937,6 +1948,12 @@ async function xlsPlanilla(pl){
       ws.addImage(id, {tl:{col: 19 + Math.min(.95, i * 0.24), row: job.r - 1 + 0.08}, ext:{width: Math.min(w, 62), height: h}, editAs:'oneCell'});
       i++;
     }
+  }
+  // calidad y notas generales de la planilla
+  for (const [t, v] of extrasDe(pl)) {
+    r += 1; ws.mergeCells(r, 1, r, 20);
+    const c = ws.getCell(r, 1); c.value = t + ': ' + v; c.font = {size:10}; c.alignment = {wrapText:true, vertical:'top'};
+    ws.getRow(r).height = Math.max(18, Math.ceil(String(v).length / 180) * 14 + 4);
   }
   // pie
   r += 1;
@@ -2730,7 +2747,7 @@ async function dLimpiar(parentId, nuevoId, coincide){
   } catch {}
 }
 // Sube este número cuando cambie el formato (encabezados, columnas) para rehacer en Drive los archivos ya subidos
-const FORMATO_DRIVE = 2; // 2: "Cant. Cx verificadas" pasa de OK/Diferencia a Cumple/No cumple
+const FORMATO_DRIVE = 3; // 2: "Cant. Cx verificadas" pasa a Cumple/No cumple · 3: el formato trae todo el texto, calidad y notas generales
 async function subirDrive(manual){
   if (!DV.mcp) { renderDrive(); return; }
   if (DV.busy) { DV.again = true; return; }
