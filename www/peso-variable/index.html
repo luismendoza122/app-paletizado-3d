@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Peso Variable – CEDI ATS R10</title>
+<meta name="description" content="Ajuste de peso variable (canastillas de carne o cerdo, cajas de pollo): con el peso de la etiqueta saca el promedio, diagnostica y dice cuántas unidades sumar o restar para cuadrar el peso del sistema.">
+<meta name="theme-color" content="#16324f">
+<style>
+:root {
+  --azul: #16324f; --azul2: #2f6fdd; --fondo: #f4f6f8; --tarjeta: #ffffff; --texto: #1b2430; --gris: #5b6775;
+  --verde: #2a9d5c; --naranja: #e07b2a; --rojo: #d62828; --borde: #d8dee6;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--fondo); color: var(--texto); font-size: 16px; }
+.barra { background: var(--azul); color: #fff; padding: 14px 16px; padding-top: max(14px, env(safe-area-inset-top)); }
+.titulo { font-weight: 700; font-size: 20px; }
+.sub { display: block; font-weight: 400; font-size: 13px; opacity: .8; }
+.pestanas { display: flex; gap: 6px; overflow-x: auto; padding: 8px; background: #fff; border-bottom: 1px solid var(--borde); position: sticky; top: 0; z-index: 5; }
+.pestanas button { flex: 0 0 auto; min-height: 48px; padding: 0 14px; border: 1px solid var(--borde); background: #fff; border-radius: 24px; font-size: 15px; font-weight: 600; color: var(--azul); cursor: pointer; }
+.pestanas button.activa { background: var(--azul); color: #fff; border-color: var(--azul); }
+main { padding: 12px; max-width: 900px; margin: 0 auto; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.tarjeta h2 { margin: 0 0 10px; font-size: 18px; }
+.tarjeta h3 { margin: 12px 0 8px; font-size: 16px; }
+.nota { color: var(--gris); font-size: 14px; margin: 6px 0; }
+.aviso { background: #fff4e5; border: 1px solid #f3c58b; border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+.aviso.error { background: #fdecec; border-color: #f1a7a7; }
+.aviso.ok { background: #e8f6ee; border-color: #9fd8b6; }
+.boton { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 18px; border-radius: 10px; border: 0; background: var(--azul2); color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; margin: 4px 6px 4px 0; }
+.boton.sec { background: #fff; color: var(--azul2); border: 2px solid var(--azul2); }
+.boton.peligro { background: var(--rojo); }
+.boton:disabled { opacity: .5; cursor: default; }
+.fila { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+label { display: flex; flex-direction: column; font-size: 14px; color: var(--gris); gap: 4px; min-width: 130px; flex: 1 1 130px; }
+input { min-height: 48px; font-size: 18px; padding: 0 10px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; color: var(--texto); width: 100%; }
+input:focus { outline: 2px solid var(--azul2); border-color: var(--azul2); }
+input.peso { font-size: 22px; font-weight: 700; text-align: center; }
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.cifra { background: var(--fondo); border-radius: 10px; padding: 10px; }
+.cifra b { display: block; font-size: 24px; }
+.cifra span { font-size: 13px; color: var(--gris); }
+.veredicto { border-radius: 14px; padding: 18px 16px; text-align: center; color: #fff; margin: 4px 0 12px; }
+.veredicto .grande { font-size: 44px; font-weight: 800; line-height: 1.1; }
+.veredicto .texto { font-size: 18px; font-weight: 600; margin-top: 4px; }
+.veredicto .detalle { font-size: 14px; opacity: .9; margin-top: 6px; }
+.veredicto.mas { background: var(--verde); }
+.veredicto.menos { background: var(--rojo); }
+.veredicto.igual { background: var(--azul); }
+.veredicto.espera { background: #8a94a1; }
+.tabla { width: 100%; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--borde); vertical-align: top; }
+th { background: var(--fondo); }
+td.num, th.num { text-align: right; }
+tr.elegida td { background: #e8f0fd; font-weight: 700; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #fff; }
+.pill.mas { background: var(--verde); } .pill.menos { background: var(--rojo); } .pill.igual { background: var(--azul); }
+.pie { text-align: center; color: var(--gris); font-size: 12px; padding: 16px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--azul); color: #fff; padding: 12px 18px; border-radius: 10px; z-index: 50; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+.pesos3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.cifras.cuatro { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 700px) { .cifras.cuatro { grid-template-columns: repeat(4, 1fr); } }
+.diagnostico { background: var(--fondo); border-left: 4px solid var(--azul2); border-radius: 8px; padding: 10px 12px; margin: 8px 0 12px; font-size: 15px; line-height: 1.45; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chip { min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--borde); background: #fff; font-size: 14px; font-weight: 600; color: var(--azul); cursor: pointer; }
+.chip.sel { background: var(--azul); color: #fff; border-color: var(--azul); }
+.pesos3 label { min-width: 0; }
+details { margin: 8px 0; } summary { min-height: 40px; font-weight: 600; color: var(--azul2); cursor: pointer; display: flex; align-items: center; }
+ol li, ul li { margin-bottom: 6px; }
+.formula { font-family: ui-monospace, Consolas, monospace; background: var(--fondo); border-radius: 8px; padding: 8px 10px; font-size: 14px; overflow-x: auto; }
+select { min-height: 48px; font-size: 16px; padding: 0 10px; border: 1px solid var(--borde); border-radius: 10px; background: #fff; color: var(--texto); }
+.campo-ed { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; border-bottom: 1px solid var(--borde); padding: 6px 0 10px; }
+.campo-ed label { flex: 1 1 160px; }
+.campo-ed .mini { min-height: 48px; min-width: 48px; padding: 0 12px; }
+[hidden] { display: none !important; }
+@media (max-width: 420px) { .veredicto .grande { font-size: 38px; } input.peso { font-size: 19px; } }
+</style>
+</head>
+<body>
+<header class="barra">
+  <div class="titulo">Peso Variable <span class="sub">CEDI ATS R10 Valledupar · carne, cerdo y pollo</span></div>
+</header>
+<nav class="pestanas" id="pestanas">
+  <button data-tab="calcular" class="activa">Calcular</button>
+  <button data-tab="historial">Historial</button>
+  <button data-tab="como">Cómo funciona</button>
+  <button data-tab="ajustes">Ajustes</button>
+</nav>
+
+<main>
+  <!-- ===== CALCULAR ===== -->
+  <section id="tab-calcular">
+    <div class="tarjeta">
+      <h2>1. Lo que dice el sistema</h2>
+      <label>Tipo (se puede editar)
+        <input id="tipo" type="text" list="tipos" placeholder="Canastilla de carne" autocomplete="off">
+      </label>
+      <datalist id="tipos"></datalist>
+      <div class="chips" id="chipsTipo"></div>
+      <div class="fila" style="margin-top:10px">
+        <label>Peso que pide el sistema (kg)
+          <input id="pesoSistema" class="peso" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">
+        </label>
+        <label><span id="lblCant">Canastillas que indica el sistema</span>
+          <input id="cantSistema" class="peso" type="text" inputmode="numeric" placeholder="0" autocomplete="off">
+        </label>
+      </div>
+      <details id="detCampos">
+        <summary>Más datos (opcional)</summary>
+        <div class="fila" id="camposExtra"></div>
+        <button class="boton sec" id="btnEditarCampos" style="min-height:40px;font-size:14px">✎ Editar o agregar campos</button>
+      </details>
+    </div>
+
+    <div class="tarjeta">
+      <h2>2. Peso de la etiqueta</h2>
+      <div class="pesos3" id="etiquetas"></div>
+      <button class="boton sec" id="btnOtra" style="min-height:44px;font-size:14px">+ Otra etiqueta</button>
+      <p class="nota">Escribe el peso que trae la etiqueta de cada <span class="uni1">canastilla</span>. Las casillas vacías no se tienen en cuenta.</p>
+    </div>
+
+    <div class="tarjeta">
+      <h2>3. Resultado</h2>
+      <div id="veredicto" class="veredicto espera">
+        <div class="grande">—</div>
+        <div class="texto">Escribe los pesos y el cálculo sale solo</div>
+      </div>
+      <div class="diagnostico" id="diagnostico" hidden></div>
+      <div id="avisos"></div>
+      <div class="cifras cuatro" id="cifras" hidden>
+        <div class="cifra"><span>Promedio por <span class="uni1">canastilla</span></span><b id="cPromedio">—</b></div>
+        <div class="cifra"><span><span class="uniN">Canastillas</span> para el peso</span><b id="cExacto">—</b></div>
+        <div class="cifra"><span>Peso estimado a despachar</span><b id="cPesoEst">—</b></div>
+        <div class="cifra"><span>Diferencia con el sistema</span><b id="cDif">—</b></div>
+      </div>
+      <div id="opciones" hidden>
+        <h3>Opciones cercanas</h3>
+        <div class="tabla"><table>
+          <thead><tr><th class="uniN">Canastillas</th><th>Ajuste</th><th class="num">Peso estimado</th><th class="num">Diferencia</th></tr></thead>
+          <tbody id="tablaOpciones"></tbody>
+        </table></div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="boton" id="btnGuardar" disabled>Guardar en el historial</button>
+        <button class="boton sec" id="btnCopiar" disabled>Copiar resultado</button>
+        <button class="boton sec" id="btnLimpiar">Nuevo cálculo</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== HISTORIAL ===== -->
+  <section id="tab-historial" hidden>
+    <div class="tarjeta">
+      <h2>Historial de ajustes</h2>
+      <p class="nota" id="resumenHist"></p>
+      <div class="tabla"><table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Datos</th><th class="num">Peso sistema</th><th class="num">Promedio</th><th class="num">Sistema</th><th class="num">Despachar</th><th>Ajuste</th><th></th></tr></thead>
+        <tbody id="tablaHist"></tbody>
+      </table></div>
+      <div style="margin-top:10px">
+        <button class="boton" id="btnExcel">Descargar para Excel (CSV)</button>
+        <button class="boton peligro" id="btnBorrarHist">Borrar historial</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CÓMO FUNCIONA ===== -->
+  <section id="tab-como" hidden>
+    <div class="tarjeta">
+      <h2>¿Qué es el peso variable?</h2>
+      <p>Los cárnicos (carne, cerdo, pollo) no pesan siempre lo mismo: cada canastilla o caja trae un peso distinto, y ese peso viene en su <b>etiqueta</b>. Por eso el sistema pide un <b>peso</b> (kg) y no un número fijo de unidades. Cuando las unidades que indica el sistema no cuadran con ese peso, se ajusta la cantidad.</p>
+      <h3>Cómo se hace en el CEDI</h3>
+      <ol>
+        <li>Se toma el peso de la <b>etiqueta de 3 unidades</b> (canastillas o cajas) del producto.</li>
+        <li>Se saca el <b>promedio</b> por unidad.</li>
+        <li>Se divide el <b>peso que pide el sistema</b> entre ese promedio: así se sabe cuántas unidades cubren el peso.</li>
+        <li>Se compara con lo que indica el sistema y se ajusta: <b>+</b> sumar, <b>0</b> igual o <b>−</b> restar unidades.</li>
+      </ol>
+      <h3>Fórmulas</h3>
+      <div class="formula">Promedio = suma de las etiquetas ÷ número de etiquetas<br>
+Unidades exactas = Peso del sistema ÷ Promedio<br>
+A despachar = Unidades exactas redondeadas (la más cercana)<br>
+Ajuste = A despachar − Unidades del sistema<br>
+Peso estimado = A despachar × Promedio</div>
+      <h3>Ejemplo</h3>
+      <p class="nota">El sistema pide 250 kg en 12 canastillas. Las etiquetas dicen 22,4 · 23,1 · 21,9 kg → promedio 22,47 kg. Con 12 se irían 269,6 kg (sobran 19,6 kg). 250 ÷ 22,47 = 11,13 → se despachan <b>11 canastillas</b>: hay que <b>restar 1</b>, y quedan 247,1 kg (−2,9 kg).</p>
+      <h3>Avisos que da la app</h3>
+      <ul>
+        <li>Si una etiqueta se aleja mucho del promedio (más de lo configurado en Ajustes), avisa para revisar esa unidad o tomar otra etiqueta.</li>
+        <li>Si hay menos de 3 etiquetas, lo indica: el promedio es menos confiable.</li>
+        <li>Si la diferencia final supera la tolerancia, lo marca para revisarlo antes de despachar.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== AJUSTES ===== -->
+  <section id="tab-ajustes" hidden>
+    <div class="tarjeta">
+      <h2>Ajustes</h2>
+      <div class="fila">
+        <label>Tolerancia de peso (%)
+          <input id="tolerancia" type="text" inputmode="decimal" placeholder="5">
+        </label>
+        <label>Variación máxima entre etiquetas (%)
+          <input id="variacion" type="text" inputmode="decimal" placeholder="10">
+        </label>
+      </div>
+      <h3>Campos de datos</h3>
+      <p class="nota">Son los datos que anotas en cada cálculo (artículo, posición, lote, proveedor, turno…). Cámbiales el nombre, agrega o quita los que quieras. Se guardan en el historial y salen en el Excel.</p>
+      <div id="listaCampos"></div>
+      <div class="fila">
+        <label>Nuevo campo <input id="nuevoCampo" type="text" placeholder="Ej. Lote, Proveedor, Turno" autocomplete="off"></label>
+        <label style="flex:0 1 150px">Tipo
+          <select id="nuevoTipo"><option value="texto">Texto</option><option value="numero">Número</option></select>
+        </label>
+        <button class="boton" id="btnAgregarCampo">+ Agregar campo</button>
+      </div>
+      <h3>Tipos guardados</h3>
+      <p class="nota">Los tipos nuevos que escribas en Calcular se agregan solos. Toca uno para quitarlo.</p>
+      <div class="chips" id="chipsAjustes"></div>
+      <p class="nota">Los ajustes y el historial se guardan solo en este equipo.</p>
+    </div>
+  </section>
+</main>
+<footer class="pie">v<span>1.2.0</span> · Uso personal de Luis Mendoza · Los datos se guardan solo en este equipo</footer>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const CLAVE_HIST = "pesoVariable.historial";
+  const CLAVE_AJ = "pesoVariable.ajustes";
+  const TIPOS_BASE = ["Canastilla de carne", "Canastilla de cerdo", "Caja de pollo"];
+  const MAX_ETIQ = 6;
+
+  // ---------- guardado local (puede fallar en algunos visores: se ignora) ----------
+  const leer = (k, def) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch { return def; } };
+  const escribir = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } };
+
+  // ---------- números con coma o punto ----------
+  function num(txt) {
+    let s = String(txt || "").trim().replace(/\s/g, "");
+    if (!s) return NaN;
+    if (s.includes(",") && s.includes(".")) s = s.lastIndexOf(",") > s.lastIndexOf(".") ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+    else s = s.replace(",", ".");
+    return /^-?\d*\.?\d+$/.test(s) ? Number(s) : NaN;
+  }
+  const fmt = (n, d = 2) => Number.isFinite(n) ? n.toLocaleString("es-CO", { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
+  const conSigno = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n);
+  const kgSigno = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + fmt(Math.abs(n)) + " kg";
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- ajustes ----------
+  let ajustes = Object.assign({ tolerancia: 5, variacion: 10, tipos: TIPOS_BASE.slice(), tipo: TIPOS_BASE[0] }, leer(CLAVE_AJ, {}));
+  if (!Array.isArray(ajustes.tipos) || !ajustes.tipos.length) ajustes.tipos = TIPOS_BASE.slice();
+  const guardarAjustes = () => escribir(CLAVE_AJ, ajustes);
+  $("tolerancia").value = String(ajustes.tolerancia).replace(".", ",");
+  $("variacion").value = String(ajustes.variacion).replace(".", ",");
+  ["tolerancia", "variacion"].forEach((id) => $(id).addEventListener("input", () => {
+    const v = num($(id).value);
+    ajustes[id] = Number.isFinite(v) && v >= 0 ? v : (id === "tolerancia" ? 5 : 10);
+    guardarAjustes(); calcular();
+  }));
+
+  // ---------- campos de datos (editables) ----------
+  const CAMPOS_BASE = [
+    { id: "articulo", nombre: "Código / artículo", tipo: "texto", ejemplo: "Ej. 123456 Pechuga" },
+    { id: "posicion", nombre: "Posición", tipo: "texto", ejemplo: "Ej. CO31-004x1" },
+  ];
+  if (!Array.isArray(ajustes.campos)) ajustes.campos = CAMPOS_BASE.map((c) => ({ ...c }));
+  const nuevoId = () => "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  function pintarCampos() { pintarCamposCalculo(); pintarListaCampos(); }
+  function pintarCamposCalculo() {
+    const previos = valoresCampos();
+    $("camposExtra").innerHTML = ajustes.campos.map((c) =>
+      `<label>${esc(c.nombre)} <input data-campo="${c.id}" type="text" ${c.tipo === "numero" ? 'inputmode="decimal"' : ""} placeholder="${esc(c.ejemplo || "")}" autocomplete="off" value="${esc(previos[c.id] || "")}"></label>`).join("")
+      || '<p class="nota">No hay campos. Agrégalos con el botón.</p>';
+  }
+  function pintarListaCampos() {
+    $("listaCampos").innerHTML = ajustes.campos.map((c, i) => `<div class="campo-ed">
+        <label>Nombre <input data-renombrar="${i}" type="text" value="${esc(c.nombre)}" autocomplete="off"></label>
+        <label style="flex:0 1 140px">Tipo <select data-tipo-campo="${i}"><option value="texto"${c.tipo !== "numero" ? " selected" : ""}>Texto</option><option value="numero"${c.tipo === "numero" ? " selected" : ""}>Número</option></select></label>
+        <button class="boton sec mini" data-subir="${i}" title="Subir"${i === 0 ? " disabled" : ""}>↑</button>
+        <button class="boton peligro mini" data-borrar-campo="${i}" title="Quitar">✕</button>
+      </div>`).join("") || '<p class="nota">No hay campos.</p>';
+  }
+  function valoresCampos() {
+    const v = {};
+    document.querySelectorAll("#camposExtra [data-campo]").forEach((i) => { if (i.value.trim()) v[i.dataset.campo] = i.value.trim(); });
+    return v;
+  }
+  // Datos del cálculo actual: { "Nombre del campo": valor }
+  function datosActuales() {
+    const v = valoresCampos(), d = {};
+    ajustes.campos.forEach((c) => { if (v[c.id]) d[c.nombre] = v[c.id]; });
+    return d;
+  }
+  $("camposExtra").addEventListener("input", calcular);
+  $("btnEditarCampos").addEventListener("click", () => document.querySelector('#pestanas [data-tab="ajustes"]').click());
+  $("listaCampos").addEventListener("input", (e) => {
+    const r = e.target.closest("[data-renombrar]");
+    if (!r) return;
+    ajustes.campos[Number(r.dataset.renombrar)].nombre = r.value.trim() || "Campo";
+    guardarAjustes();
+  });
+  $("listaCampos").addEventListener("change", (e) => {
+    const t = e.target.closest("[data-tipo-campo]");
+    if (t) { ajustes.campos[Number(t.dataset.tipoCampo)].tipo = t.value; guardarAjustes(); }
+    pintarCamposCalculo(); // la lista no se vuelve a dibujar aquí para no perder el clic en ✕ o ↑
+  });
+  $("listaCampos").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-borrar-campo],[data-subir]");
+    if (!b) return;
+    if (b.dataset.borrarCampo !== undefined) ajustes.campos.splice(Number(b.dataset.borrarCampo), 1);
+    else { const i = Number(b.dataset.subir); [ajustes.campos[i - 1], ajustes.campos[i]] = [ajustes.campos[i], ajustes.campos[i - 1]]; }
+    guardarAjustes(); pintarCampos();
+  });
+  $("btnAgregarCampo").addEventListener("click", () => {
+    const nombre = $("nuevoCampo").value.trim();
+    if (!nombre) { $("nuevoCampo").focus(); return; }
+    if (ajustes.campos.some((c) => c.nombre.toLowerCase() === nombre.toLowerCase())) { toast("Ese campo ya existe"); return; }
+    ajustes.campos.push({ id: nuevoId(), nombre, tipo: $("nuevoTipo").value });
+    guardarAjustes(); pintarCampos();
+    $("nuevoCampo").value = "";
+    toast(`Campo "${nombre}" agregado`);
+  });
+  $("nuevoCampo").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("btnAgregarCampo").click(); } });
+
+  // ---------- tipo de unidad (canastilla de carne, caja de pollo…) ----------
+  function unidad(tipo) {
+    const p = String(tipo || "").trim().split(/\s+/)[0].toLowerCase() || "canastilla";
+    const plural = /[aeiouáéó]$/.test(p) ? p + "s" : /z$/.test(p) ? p.slice(0, -1) + "ces" : p + "es";
+    return { uno: p, varios: plural, Varios: plural.charAt(0).toUpperCase() + plural.slice(1) };
+  }
+  const tipoActual = () => $("tipo").value.trim() || TIPOS_BASE[0];
+  function pintarTipos() {
+    $("tipos").innerHTML = ajustes.tipos.map((t) => `<option value="${esc(t)}">`).join("");
+    const act = tipoActual().toLowerCase();
+    $("chipsTipo").innerHTML = ajustes.tipos.map((t) => `<button class="chip${t.toLowerCase() === act ? " sel" : ""}" data-tipo="${esc(t)}">${esc(t)}</button>`).join("");
+    $("chipsAjustes").innerHTML = ajustes.tipos.map((t) => `<button class="chip" data-quitar-tipo="${esc(t)}">✕ ${esc(t)}</button>`).join("");
+    const u = unidad(tipoActual());
+    document.querySelectorAll(".uni1").forEach((e) => (e.textContent = u.uno));
+    document.querySelectorAll(".uniN").forEach((e) => (e.textContent = u.Varios));
+    $("lblCant").textContent = `${u.Varios} que indica el sistema`;
+  }
+  $("tipo").value = ajustes.tipo || TIPOS_BASE[0];
+  $("tipo").addEventListener("input", () => { ajustes.tipo = tipoActual(); guardarAjustes(); pintarTipos(); calcular(); });
+  $("tipo").addEventListener("change", recordarTipo);
+  function recordarTipo() {
+    const t = tipoActual();
+    if (!ajustes.tipos.some((x) => x.toLowerCase() === t.toLowerCase())) { ajustes.tipos.push(t); guardarAjustes(); }
+    pintarTipos();
+  }
+  $("chipsTipo").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tipo]");
+    if (!b) return;
+    $("tipo").value = b.dataset.tipo; ajustes.tipo = b.dataset.tipo; guardarAjustes(); pintarTipos(); calcular();
+    $("pesoSistema").focus();
+  });
+  $("chipsAjustes").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-quitar-tipo]");
+    if (!b) return;
+    ajustes.tipos = ajustes.tipos.filter((t) => t !== b.dataset.quitarTipo);
+    if (!ajustes.tipos.length) ajustes.tipos = TIPOS_BASE.slice();
+    guardarAjustes(); pintarTipos();
+  });
+
+  // ---------- casillas de etiqueta ----------
+  function agregarEtiqueta() {
+    const n = $("etiquetas").children.length + 1;
+    if (n > MAX_ETIQ) return;
+    const l = document.createElement("label");
+    l.innerHTML = `Etiqueta ${n} (kg) <input class="peso etiq" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off">`;
+    $("etiquetas").appendChild(l);
+    const inp = l.querySelector("input");
+    inp.addEventListener("input", calcular);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const todas = [...document.querySelectorAll(".etiq")];
+      const sig = todas[todas.indexOf(inp) + 1];
+      if (sig) sig.focus(); else if (!$("btnGuardar").disabled) $("btnGuardar").click();
+    });
+    $("btnOtra").hidden = n >= MAX_ETIQ;
+    return inp;
+  }
+  for (let i = 0; i < 3; i++) agregarEtiqueta();
+  $("btnOtra").addEventListener("click", () => { const i = agregarEtiqueta(); if (i) i.focus(); });
+
+  // ---------- pestañas ----------
+  $("pestanas").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    document.querySelectorAll("#pestanas button").forEach((x) => x.classList.toggle("activa", x === b));
+    document.querySelectorAll("main > section").forEach((s) => (s.hidden = s.id !== "tab-" + b.dataset.tab));
+    if (b.dataset.tab === "historial") pintarHistorial();
+  });
+
+  // ---------- cálculo (se hace solo al escribir) ----------
+  let ultimo = null;
+  ["pesoSistema", "cantSistema"].forEach((id) => $(id).addEventListener("input", calcular));
+  [["pesoSistema", "cantSistema"], ["cantSistema", null]].forEach(([id, sig]) => $(id).addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    (sig ? $(sig) : document.querySelector(".etiq")).focus();
+  }));
+
+  function veredicto(clase, grande, texto, detalle) {
+    const v = $("veredicto");
+    v.className = "veredicto " + clase;
+    v.innerHTML = `<div class="grande">${grande}</div><div class="texto">${texto}</div>${detalle ? `<div class="detalle">${detalle}</div>` : ""}`;
+  }
+  function avisar(lista) {
+    $("avisos").innerHTML = lista.map(([tipo, t]) => `<div class="aviso ${tipo}">${t}</div>`).join("");
+  }
+
+  function calcular() {
+    const u = unidad(tipoActual());
+    const pesoSis = num($("pesoSistema").value);
+    const cantSis = num($("cantSistema").value);
+    const etiquetas = [...document.querySelectorAll(".etiq")].map((i) => num(i.value)).filter((p) => Number.isFinite(p) && p > 0);
+    const avisos = [];
+    ultimo = null;
+    $("btnGuardar").disabled = true; $("btnCopiar").disabled = true;
+    $("cifras").hidden = true; $("opciones").hidden = true; $("diagnostico").hidden = true; $("diagnostico").innerHTML = "";
+
+    if (!Number.isFinite(pesoSis) || pesoSis <= 0 || !etiquetas.length) {
+      const falta = [];
+      if (!Number.isFinite(pesoSis) || pesoSis <= 0) falta.push("el peso del sistema");
+      if (!etiquetas.length) falta.push("el peso de las etiquetas");
+      veredicto("espera", "—", "Falta " + falta.join(" y "), "El cálculo sale solo apenas estén los datos");
+      avisar(avisos);
+      return;
+    }
+    const prom = etiquetas.reduce((a, b) => a + b, 0) / etiquetas.length;
+    if (etiquetas.length < 3) avisos.push(["", `Con ${etiquetas.length} etiqueta${etiquetas.length === 1 ? "" : "s"} el promedio es menos confiable: en el CEDI se toman 3.`]);
+    const desv = etiquetas.map((p) => Math.abs(p - prom) / prom * 100);
+    const maxDesv = Math.max(...desv);
+    if (etiquetas.length > 1 && maxDesv > ajustes.variacion) {
+      avisos.push(["", `⚠ La etiqueta ${desv.indexOf(maxDesv) + 1} se aleja ${fmt(maxDesv, 1)} % del promedio (máximo ${fmt(ajustes.variacion, 0)} %). Revisa esa ${u.uno} o toma otra etiqueta.`]);
+    }
+
+    const exacto = pesoSis / prom;
+    const abajo = Math.max(1, Math.floor(exacto));
+    const arriba = Math.max(1, Math.ceil(exacto));
+    const cercana = Math.abs(abajo * prom - pesoSis) <= Math.abs(arriba * prom - pesoSis) ? abajo : arriba;
+    const tieneSis = Number.isFinite(cantSis) && cantSis > 0;
+    const cantS = tieneSis ? Math.round(cantSis) : null;
+    const ajuste = tieneSis ? cercana - cantS : null;
+    const pesoEst = cercana * prom;
+    const dif = pesoEst - pesoSis;
+    const difPct = dif / pesoSis * 100;
+    const nom = (n) => `${n} ${n === 1 ? u.uno : u.varios}`;
+
+    $("cPromedio").textContent = fmt(prom) + " kg";
+    $("cExacto").textContent = fmt(exacto, 2);
+    $("cPesoEst").textContent = fmt(pesoEst) + " kg";
+    $("cDif").textContent = kgSigno(dif) + ` (${difPct > 0 ? "+" : difPct < 0 ? "−" : ""}${fmt(Math.abs(difPct), 1)} %)`;
+    $("cifras").hidden = false;
+
+    // Veredicto
+    if (ajuste === null) {
+      veredicto("igual", cercana, `${u.Varios} cubren el peso`, "Escribe lo que indica el sistema para saber si hay que sumar o restar");
+    } else if (ajuste > 0) {
+      veredicto("mas", conSigno(ajuste), `Sumar ${nom(ajuste)}`, `Despachar ${cercana} en vez de ${cantS} · peso estimado ${fmt(pesoEst)} kg`);
+    } else if (ajuste < 0) {
+      veredicto("menos", conSigno(ajuste), `Restar ${nom(-ajuste)}`, `Despachar ${cercana} en vez de ${cantS} · peso estimado ${fmt(pesoEst)} kg`);
+    } else {
+      veredicto("igual", "0", "Cuadra: no se suma ni se resta", `${nom(cercana)} · peso estimado ${fmt(pesoEst)} kg`);
+    }
+
+    // Diagnóstico en palabras
+    let diag = `<b>Diagnóstico:</b> las ${etiquetas.length} etiqueta${etiquetas.length === 1 ? "" : "s"} dan un promedio de <b>${fmt(prom)} kg</b> por ${u.uno}. `;
+    if (tieneSis) {
+      const pesoConSis = cantS * prom, sobra = pesoConSis - pesoSis;
+      diag += `Con las ${nom(cantS)} del sistema se irían unos <b>${fmt(pesoConSis)} kg</b>, `;
+      diag += Math.abs(sobra) < 0.005 ? "justo lo que pide el sistema. " :
+        sobra > 0 ? `es decir, <b>sobran ${fmt(sobra)} kg</b> (≈ ${fmt(sobra / prom, 1)} ${u.uno}). ` : `es decir, <b>faltan ${fmt(-sobra)} kg</b> (≈ ${fmt(-sobra / prom, 1)} ${u.uno}). `;
+    }
+    diag += `El peso de ${fmt(pesoSis)} kg se cubre con <b>${nom(cercana)}</b> (${fmt(pesoEst)} kg, ${kgSigno(dif)}).`;
+    if (ajuste > 0) diag += ` Hay que <b>sumar ${nom(ajuste)}</b>.`;
+    else if (ajuste < 0) diag += ` Hay que <b>restar ${nom(-ajuste)}</b>.`;
+    else if (ajuste === 0) diag += " No hay que ajustar.";
+    $("diagnostico").innerHTML = diag;
+    $("diagnostico").hidden = false;
+
+    if (Math.abs(difPct) > ajustes.tolerancia) {
+      avisos.push(["error", `La diferencia (${kgSigno(dif)}, ${fmt(Math.abs(difPct), 1)} %) supera la tolerancia de ${fmt(ajustes.tolerancia, 0)} %: ninguna cantidad entera de ${u.varios} queda más cerca. Revísalo antes de despachar.`]);
+    } else {
+      avisos.push(["ok", `Diferencia dentro de la tolerancia (${fmt(ajustes.tolerancia, 0)} %).`]);
+    }
+    avisar(avisos);
+
+    // Opciones cercanas (−1, la elegida, +1)
+    const filas = [];
+    for (let n = Math.max(1, cercana - 1); n <= cercana + 1; n++) {
+      const pe = n * prom, d = pe - pesoSis;
+      const aj = tieneSis ? n - cantS : null;
+      const clase = aj === null ? "" : aj > 0 ? "mas" : aj < 0 ? "menos" : "igual";
+      filas.push(`<tr class="${n === cercana ? "elegida" : ""}"><td>${n}${n === cercana ? " ✓" : ""}</td><td>${aj === null ? "—" : `<span class="pill ${clase}">${conSigno(aj)}</span>`}</td><td class="num">${fmt(pe)} kg</td><td class="num">${kgSigno(d)}</td></tr>`);
+    }
+    $("tablaOpciones").innerHTML = filas.join("");
+    $("opciones").hidden = false;
+
+    ultimo = {
+      fecha: new Date().toISOString(), tipo: tipoActual(),
+      datos: datosActuales(),
+      pesoSistema: pesoSis, cantSistema: cantS, etiquetas,
+      promedio: prom, exacto, despachar: cercana, ajuste, pesoEstimado: pesoEst, diferencia: dif,
+    };
+    $("btnGuardar").disabled = false; $("btnCopiar").disabled = false;
+  }
+
+  // ---------- acciones ----------
+  function toast(t) {
+    const d = document.createElement("div");
+    d.className = "toast"; d.textContent = t;
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 2200);
+  }
+  function textoResultado(r) {
+    const u = unidad(r.tipo);
+    const quien = textoDatos(r);
+    return [
+      "PESO VARIABLE – " + r.tipo + (quien ? " – " + quien : ""),
+      `Sistema: ${fmt(r.pesoSistema)} kg` + (r.cantSistema !== null ? ` en ${r.cantSistema} ${u.varios}` : ""),
+      `Etiquetas: ${r.etiquetas.map((p) => fmt(p)).join(" / ")} kg`,
+      `Promedio: ${fmt(r.promedio)} kg por ${u.uno}`,
+      `Despachar: ${r.despachar} ${u.varios}` + (r.ajuste !== null ? ` (${r.ajuste > 0 ? "sumar" : r.ajuste < 0 ? "restar" : "ajuste"} ${conSigno(r.ajuste)})` : ""),
+      `Peso estimado: ${fmt(r.pesoEstimado)} kg (${kgSigno(r.diferencia)})`,
+    ].join("\n");
+  }
+  $("btnCopiar").addEventListener("click", async () => {
+    if (!ultimo) return;
+    const t = textoResultado(ultimo);
+    try { await navigator.clipboard.writeText(t); toast("Resultado copiado"); }
+    catch {
+      const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select();
+      try { document.execCommand("copy"); toast("Resultado copiado"); } catch { toast("No se pudo copiar"); }
+      a.remove();
+    }
+  });
+  $("btnGuardar").addEventListener("click", () => {
+    if (!ultimo) return;
+    recordarTipo();
+    const h = leer(CLAVE_HIST, []);
+    h.unshift(ultimo);
+    if (escribir(CLAVE_HIST, h.slice(0, 1000))) toast("Guardado en el historial");
+    else toast("Este visor no deja guardar; copia el resultado");
+    limpiar();
+  });
+  function limpiar() {
+    ["pesoSistema", "cantSistema"].forEach((id) => ($(id).value = ""));
+    document.querySelectorAll("#camposExtra [data-campo]").forEach((i) => (i.value = ""));
+    $("etiquetas").innerHTML = "";
+    for (let i = 0; i < 3; i++) agregarEtiqueta();
+    calcular();
+    $("pesoSistema").focus();
+  }
+  $("btnLimpiar").addEventListener("click", limpiar);
+
+  // ---------- historial ----------
+  // Datos de un registro (los viejos traían articulo y posicion sueltos)
+  const datosDe = (r) => r.datos || Object.fromEntries([["Código / artículo", r.articulo], ["Posición", r.posicion]].filter(([, v]) => v));
+  const textoDatos = (r) => Object.entries(datosDe(r)).map(([k, v]) => `${k}: ${v}`).join(" · ");
+  const etiqDe = (r) => Array.isArray(r.etiquetas) ? r.etiquetas : [r.p1, r.p2, r.p3].filter((x) => Number.isFinite(x));
+  function pintarHistorial() {
+    const h = leer(CLAVE_HIST, []);
+    const mas = h.filter((r) => r.ajuste > 0).length, menos = h.filter((r) => r.ajuste < 0).length;
+    $("resumenHist").textContent = h.length
+      ? `${h.length} ajuste(s) · ${mas} para sumar · ${menos} para restar · ${h.length - mas - menos} sin cambio`
+      : "Todavía no hay ajustes guardados.";
+    $("tablaHist").innerHTML = h.map((r, i) => {
+      const f = new Date(r.fecha);
+      const clase = r.ajuste === null ? "" : r.ajuste > 0 ? "mas" : r.ajuste < 0 ? "menos" : "igual";
+      return `<tr><td>${f.toLocaleDateString("es-CO")} ${f.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}</td>
+        <td>${esc(r.tipo || "Canastilla")}</td>
+        <td>${esc(textoDatos(r) || "—")}</td>
+        <td class="num">${fmt(r.pesoSistema)}</td><td class="num">${fmt(r.promedio)}</td>
+        <td class="num">${r.cantSistema ?? "—"}</td><td class="num">${r.despachar}</td>
+        <td>${r.ajuste === null ? "—" : `<span class="pill ${clase}">${conSigno(r.ajuste)}</span>`}</td>
+        <td><button class="boton sec" style="min-height:36px;padding:0 10px;font-size:13px" data-quitar="${i}">Quitar</button></td></tr>`;
+    }).join("");
+    $("btnExcel").disabled = !h.length; $("btnBorrarHist").disabled = !h.length;
+  }
+  $("tablaHist").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-quitar]");
+    if (!b) return;
+    const h = leer(CLAVE_HIST, []);
+    h.splice(Number(b.dataset.quitar), 1);
+    escribir(CLAVE_HIST, h); pintarHistorial();
+  });
+  let confirmarBorrado = 0;
+  $("btnBorrarHist").addEventListener("click", () => {
+    if (Date.now() - confirmarBorrado > 4000) { confirmarBorrado = Date.now(); toast("Toca otra vez para borrar todo el historial"); return; }
+    escribir(CLAVE_HIST, []); pintarHistorial(); toast("Historial borrado");
+  });
+  $("btnExcel").addEventListener("click", () => {
+    const h = leer(CLAVE_HIST, []);
+    const n = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d).replace(".", ",") : "";
+    const nombres = [...new Set(ajustes.campos.map((c) => c.nombre).concat(...h.map((r) => Object.keys(datosDe(r)))))];
+    const cab = ["Fecha", "Hora", "Tipo", ...nombres, "Peso sistema kg", "Unidades sistema", "Etiquetas kg", "Promedio kg", "Unidades exactas", "Despachar", "Ajuste", "Peso estimado kg", "Diferencia kg"];
+    const filas = h.map((r) => {
+      const f = new Date(r.fecha);
+      return [f.toLocaleDateString("es-CO"), f.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }), r.tipo || "", ...nombres.map((k) => datosDe(r)[k] ?? ""),
+        n(r.pesoSistema), r.cantSistema ?? "", etiqDe(r).map((x) => n(x)).join(" / "), n(r.promedio, 3), n(r.exacto, 2), r.despachar,
+        r.ajuste === null ? "" : (r.ajuste > 0 ? "+" : "") + r.ajuste, n(r.pesoEstimado), n(r.diferencia)];
+    });
+    const csv = "﻿" + [cab].concat(filas).map((f) => f.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `peso-variable-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+
+  pintarTipos();
+  pintarCampos();
+  calcular();
+  $("pesoSistema").focus();
+})();
+</script>
+</body>
+</html>

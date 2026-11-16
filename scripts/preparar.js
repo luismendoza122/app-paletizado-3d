@@ -30,7 +30,7 @@ console.log('Listo: www/vendor preparado.');
 
 // Copia para la APK: la misma app SIN las páginas que viven solo en la web
 // (Recibo, THEMENDO e Inventario siguen en https://luismendoza122.github.io/app-paletizado-3d/).
-const SOLO_WEB = ['recibo', 'themendo', 'inventario'];
+const SOLO_WEB = ['recibo', 'themendo', 'inventario', 'peso-variable'];
 const apk = join(raiz, 'www-apk');
 rmSync(apk, { recursive: true, force: true });
 cpSync(join(raiz, 'www'), apk, {
