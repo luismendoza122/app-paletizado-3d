@@ -91,6 +91,7 @@ with sync_playwright() as p:
     pg.click('[data-tab="tareas"]'); pg.fill('#formLogin [name=usuario]', CODIGO); pg.click('#formLogin button'); pg.wait_for_timeout(1000)
     pg.click('[data-tab="drive"]')
     ok(esperar(pg, lambda: 'Sin conectar' in pg.inner_text('#drEstado')), 'administrador: pestaña Drive sin conectar')
+    pg.wait_for_load_state('networkidle'); pg.wait_for_timeout(800)  # la pestaña se vuelve a dibujar cuando llega lo guardado en la nube
     pg.fill('#drDirecciones', 'https://drive.google.com/drive/folders/1PALETIZADOAAAAAAAAAAAAAAA?usp=sharing\nhttps://drive.google.com/drive/folders/1PALETIZADOBBBBBBBBBBBBBBB')
     pg.click('#drCrear')
     codigo = pg.input_value('#drCodigo')
