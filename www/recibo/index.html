@@ -300,6 +300,7 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .notasChips{flex-wrap:wrap}
 .notasChips .fchip{font-weight:500}
 .notasChips .fchip[aria-pressed="true"]{background:var(--surface-2);border-color:var(--accent);color:var(--ink)}
+.aviso{background:var(--warn-soft);border:1px solid var(--warn);color:var(--ink);border-radius:var(--r);padding:10px 12px;margin:0 0 10px}.aviso p{margin:0 0 8px}
 </style>
 
 <header class="top">
@@ -352,6 +353,7 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
         <p class="note">Toca cualquier conferencia para editarla. Para corregir una de otro día, elige la planilla arriba o búscala aquí:</p>
         <label class="fld"><span>Buscar en todas las planillas</span><input id="qConf" type="search" autocomplete="off" placeholder="Etiqueta, SAP, descripción, proveedor u observación"></label>
         <div id="qBox" class="view" style="gap:8px" hidden><div class="resHead"><h3 id="qTit"></h3><button class="btn sm" id="qClear">Cerrar búsqueda</button></div><div class="filas" id="qRes"></div></div>
+        <div class="aviso" id="otrasFechas" hidden></div>
         <div class="filas" id="filas"></div>
         <div class="empty" id="filasEmpty" hidden>
           <p>Esta planilla no tiene conferencias. Toca <b>Agregar conferencia</b> para registrar la primera etiqueta.</p>
@@ -770,6 +772,33 @@ const activas = () => [...S.pl.values()].filter(p => !p._deleted).sort((a, b) =>
 // (Tablero, Excel, Drive y nube) y se abren desde Tablero → Historial de planillas.
 const delDia = () => activas().filter(p => p.fecha === today());
 let verHist = null; // planilla de otro día abierta a propósito desde el historial (no se guarda al recargar)
+// En la planilla de hoy solo se muestran e imprimen las conferencias de hoy. Las planillas de días pasados
+// se ven completas, como quedaron.
+const fechaFila = (f, pl) => f.fecha || pl.fecha;
+const filasDe = pl => !pl ? [] : pl.fecha === today() ? pl.filas.filter(f => fechaFila(f, pl) === today()) : pl.filas;
+const otrasFechas = pl => !pl || pl.fecha !== today() ? [] : pl.filas.filter(f => fechaFila(f, pl) !== today());
+// Pasa las conferencias de otras fechas a una planilla de su fecha (la del mismo auditor o una nueva)
+async function pasarOtrasFechas(pl){
+  const otras = otrasFechas(pl); if (!otras.length) return 0;
+  const grupos = new Map();
+  for (const f of otras) { const k = fechaFila(f, pl); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(f); }
+  const aud = low(pl.auditor && pl.auditor.nombre);
+  for (const [fecha, filas] of grupos) {
+    let dest = activas().find(p => p.id !== pl.id && p.fecha === fecha && low(p.auditor && p.auditor.nombre) === aud);
+    if (!dest) { dest = blankPlanilla(); dest.fecha = fecha; dest.sede = pl.sede || dest.sede; dest.auditor = {nombre: pl.auditor.nombre || '', sap: pl.auditor.sap || ''}; }
+    for (const f of filas) {
+      dest.filas.push(f);
+      for (const fid of f.fotos || []) {
+        if (pl.fotos[fid]) { dest.fotos[fid] = pl.fotos[fid]; delete pl.fotos[fid]; }
+        try { const r = await IDB.get('fotos', fid); if (r) { r.pid = dest.id; await IDB.put('fotos', r); } } catch {}
+      }
+    }
+    pl.filas = pl.filas.filter(f => !filas.includes(f));
+    await savePl(dest, true);
+  }
+  await savePl(pl);
+  return otras.length;
+}
 function estadoFila(f){
   const v = CRIT.map(c => f[c.k] || '');
   if (v.includes('nc')) return 'nov';
@@ -1182,7 +1211,16 @@ function renderFilas(){
   refreshSel();
   renderChips();
   let ok = 0, nov = 0, sin = 0, fotos = 0, vis = 0;
+  const lista = filasDe(p), otras = otrasFechas(p);
+  const av = $('#otrasFechas');
+  if (otras.length) {
+    const fechas = [...new Set(otras.map(f => fmtD(fechaFila(f, p))))].join(', ');
+    av.innerHTML = '<p><b>' + otras.length + (otras.length === 1 ? ' conferencia es' : ' conferencias son') + ' de otra fecha (' + esc(fechas) + ').</b> No salen aquí ni en el formato que se imprime. Pásalas a la planilla de su fecha:</p><button class="btn" id="btnOtrasFechas">Pasar a su planilla</button>';
+    av.hidden = false;
+    $('#btnOtrasFechas').onclick = async () => { const n = await pasarOtrasFechas(p); renderAll(); toast(n + (n === 1 ? ' conferencia pasó' : ' conferencias pasaron') + ' a la planilla de su fecha (Tablero → Historial).'); };
+  } else { av.hidden = true; av.innerHTML = ''; }
   $('#filas').innerHTML = p.filas.map((f, i) => {
+    if (!lista.includes(f)) return '';
     const e = estadoFila(f); if (e === 'ok') ok++; else if (e === 'nov') nov++; else sin++;
     fotos += (f.fotos || []).length;
     if (!pasaCat(f, S.fCat)) return '';
@@ -1191,9 +1229,9 @@ function renderFilas(){
   }).join('');
   const fe = $('#filasEmpty');
   fe.hidden = vis > 0;
-  fe.innerHTML = p.filas.length ? '<p>Ninguna conferencia de esta planilla es de <b>' + esc(S.fCat === '__crit' ? 'productos críticos' : S.fCat) + '</b>.</p>' : '<p>Esta planilla no tiene conferencias. Toca <b>Agregar conferencia</b> para registrar la primera etiqueta.</p>';
-  $('#cntFilas').textContent = p.filas.length ? '(' + (S.fCat ? vis + ' de ' : '') + p.filas.length + ')' : '';
-  $('#plSum').innerHTML = p.filas.length ? '<span class="tag ok">' + ok + ' conformes</span><span class="tag bad">' + nov + ' con novedad</span>' + (sin ? '<span class="tag">' + sin + ' sin verificar</span>' : '') + '<span class="tag">' + fotos + ' fotos</span>' : '';
+  fe.innerHTML = lista.length ? '<p>Ninguna conferencia de esta planilla es de <b>' + esc(S.fCat === '__crit' ? 'productos críticos' : S.fCat) + '</b>.</p>' : '<p>Esta planilla no tiene conferencias. Toca <b>Agregar conferencia</b> para registrar la primera etiqueta.</p>';
+  $('#cntFilas').textContent = lista.length ? '(' + (S.fCat ? vis + ' de ' : '') + lista.length + ')' : '';
+  $('#plSum').innerHTML = lista.length ? '<span class="tag ok">' + ok + ' conformes</span><span class="tag bad">' + nov + ' con novedad</span>' + (sin ? '<span class="tag">' + sin + ' sin verificar</span>' : '') + '<span class="tag">' + fotos + ' fotos</span>' : '';
   renderBusqueda();
 }
 function renderBusqueda(){
@@ -1712,7 +1750,7 @@ function tablaHist(fs){
 
 // ---------- hoja para imprimir (vista previa) ----------
 function marcas(v){ return v === 'ok' ? ['X', ''] : v === 'nc' ? ['', 'X'] : v === 'na' ? ['N/V', ''] : ['', '']; }
-function evidRefs(pl){ const m = new Map(); let k = 0; if (pl) pl.filas.forEach(f => { const n = (f.fotos || []).length; if (n) { m.set(f.id, n === 1 ? 'E' + (k + 1) : 'E' + (k + 1) + '-' + (k + n)); k += n; } }); return m; }
+function evidRefs(pl){ const m = new Map(); let k = 0; if (pl) filasDe(pl).forEach(f => { const n = (f.fotos || []).length; if (n) { m.set(f.id, n === 1 ? 'E' + (k + 1) : 'E' + (k + 1) + '-' + (k + n)); k += n; } }); return m; }
 function renderPrint(){
   const sel = $('#prSel'), cur = sel.value;
   const list = activas();
@@ -1722,7 +1760,7 @@ function renderPrint(){
   $('#btnXls').disabled = !pl;
   $('#prNote').textContent = pl ? 'El PDF sale en hoja carta horizontal, como el formato físico. Al descargarlo te pregunto si quieres incluir las fotos de evidencia.' : 'Plantilla en blanco con ' + S.cfg.filas + ' filas, para llenar a mano. Se descarga en PDF, hoja carta horizontal.';
   const refs = evidRefs(pl);
-  const rows = pl ? pl.filas : Array.from({length: S.cfg.filas}, () => null);
+  const rows = pl ? filasDe(pl) : Array.from({length: S.cfg.filas}, () => null);
   const head = '<tr><th rowspan="2" style="width:52px">Fecha</th><th rowspan="2" style="width:76px">Operador de recibo</th><th rowspan="2" style="width:98px">Proveedor</th><th rowspan="2" style="width:92px">Etiqueta</th><th rowspan="2" style="width:44px">SAP</th><th rowspan="2" style="width:106px">Descripción</th>' +
     CRIT.map(c => '<th colspan="2">' + esc(c.t) + '</th>').join('') + '<th rowspan="2" style="width:70px">Observaciones</th><th rowspan="2" style="width:32px">Evid.</th></tr><tr>' +
     CRIT.map(c => '<th>' + c.a + '</th><th>' + c.b + '</th>').join('') + '</tr>';
@@ -1768,7 +1806,7 @@ const estTxt = e => e === 'ok' ? 'Conforme' : e === 'nov' ? 'Con novedad' : 'Sin
 
 // PDF de una planilla (o plantilla en blanco)
 async function preguntarEvidencias(pl){
-  const n = pl ? pl.filas.reduce((a, f) => a + (f.fotos || []).length, 0) : 0;
+  const n = pl ? filasDe(pl).reduce((a, f) => a + (f.fotos || []).length, 0) : 0;
   if (!n) return false;
   return ask('La planilla tiene ' + n + (n === 1 ? ' foto' : ' fotos') + ' de evidencia. ¿Quieres incluirlas en el PDF? Van en páginas al final, después del formato.', 'Sí, con evidencias', 'No, solo la planilla');
 }
@@ -1778,7 +1816,7 @@ async function pdfPlanilla(pl, conEvid){
   const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'letter'});
   const W = 279.4, H = 215.9, M = 8;
   const refs = conEvid ? evidRefs(pl) : new Map();
-  const rows = pl ? pl.filas : Array.from({length: S.cfg.filas}, () => null);
+  const rows = pl ? filasDe(pl) : Array.from({length: S.cfg.filas}, () => null);
   const sede = (pl && pl.sede) || S.cfg.sede || '';
   const head = [
     [{content:'Fecha', rowSpan:2}, {content:'Operador de recibo', rowSpan:2}, {content:'Proveedor', rowSpan:2}, {content:'Etiqueta', rowSpan:2}, {content:'SAP', rowSpan:2}, {content:'Descripción', rowSpan:2},
@@ -1826,7 +1864,7 @@ async function pdfPlanilla(pl, conEvid){
   // páginas de evidencias (solo si se pidieron)
   if (pl && conEvid) {
     const items = []; let k = 0;
-    pl.filas.forEach((f, i) => (f.fotos || []).forEach(fid => { k++; items.push({k, i, f, fid}); }));
+    filasDe(pl).forEach((f, i) => (f.fotos || []).forEach(fid => { k++; items.push({k, i, f, fid}); }));
     if (items.length) {
       const cols = 3, rowsPP = 2, gap = 6, cw = (W - 2 * M - gap * (cols - 1)) / cols, ih = 62, ch = ih + 26;
       for (let n = 0; n < items.length; n++) {
@@ -1876,7 +1914,7 @@ async function xlsPlanilla(pl){
   ws.getRow(4).height = 28; ws.getRow(5).height = 18;
   // datos
   let r = 6; const thumbsJobs = [];
-  pl.filas.forEach(f => {
+  filasDe(pl).forEach(f => {
     const vals = [fmtD(f.fecha), f.operador || '', f.proveedor || '', f.etiqueta || '', f.sap || '', f.descripcion || '', ...CRIT.flatMap(c => marcas(f[c.k])), f.obs || '', refs.get(f.id) || ''];
     vals.forEach((v, i) => {
       const cell = ws.getCell(r, i + 1); cell.value = v; cell.border = box;
@@ -1913,7 +1951,7 @@ async function xlsPlanilla(pl){
 
   // hoja de evidencias en tamaño grande
   const items = []; let k = 0;
-  pl.filas.forEach((f, i) => (f.fotos || []).forEach(fid => { k++; items.push({k, i, f, fid}); }));
+  filasDe(pl).forEach((f, i) => (f.fotos || []).forEach(fid => { k++; items.push({k, i, f, fid}); }));
   if (items.length) {
     const we = wb.addWorksheet('Evidencias', {pageSetup:{orientation:'portrait', paperSize:1, fitToPage:true, fitToWidth:1, fitToHeight:0}});
     we.columns = [{header:'Ref.', width:7}, {header:'Conferencia', width:24}, {header:'Observación', width:30}, {header:'Foto', width:62}];
