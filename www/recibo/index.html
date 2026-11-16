@@ -329,9 +329,10 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
     <div class="critBar"><span>Productos críticos</span><div class="fchips" id="regChips" role="group" aria-label="Filtrar conferencias por categoría"></div></div>
 
     <div class="empty" id="regEmpty" hidden>
-      <h2>Aún no hay planillas</h2>
+      <h2>No hay planilla de hoy</h2>
       <p class="note">Una planilla es el registro de un día: cada conferencia (etiqueta revisada) es una fila con su verificación, observaciones y fotos.</p>
       <button class="btn primary" id="btnPrimera">Crear la planilla de hoy</button>
+      <p class="note" id="regEmptyHist"></p>
     </div>
 
     <div id="regBody" class="view">
@@ -765,6 +766,10 @@ function blankPlanilla(){
 }
 const curPl = () => S.pl.get(S.cur) || null;
 const activas = () => [...S.pl.values()].filter(p => !p._deleted).sort((a, b) => (b.fecha||'').localeCompare(a.fecha||'') || b.creado - a.creado);
+// En Registro solo se trabajan las planillas de la fecha de hoy. Las de días pasados siguen guardadas
+// (Tablero, Excel, Drive y nube) y se abren desde Tablero → Historial de planillas.
+const delDia = () => activas().filter(p => p.fecha === today());
+let verHist = null; // planilla de otro día abierta a propósito desde el historial (no se guarda al recargar)
 function estadoFila(f){
   const v = CRIT.map(c => f[c.k] || '');
   if (v.includes('nc')) return 'nov';
@@ -989,7 +994,7 @@ async function onRemote(snap){
       changed = true;
     }
   }
-  if (changed) { if (!S.cur || !S.pl.has(S.cur)) { const a = activas()[0]; S.cur = a ? a.id : null; } renderAll(); }
+  if (changed) { if (!S.cur || !S.pl.has(S.cur)) { const a = delDia()[0]; S.cur = a ? a.id : null; } renderAll(); }
   status();
 }
 function cleanPl(pl){
@@ -1120,15 +1125,20 @@ function renderHeader(){
 }
 function renderAll(){ renderHeader(); renderRegistro(); renderListas(); if (tab === 'tablero') renderTablero(); if (tab === 'imprimir') renderPrint(); }
 
-function plLabel(p){ return fmtD(p.fecha) + ' · ' + (p.auditor && p.auditor.nombre || 'Sin auditor') + ' · ' + p.filas.length + ' conf.' + (p._dirty ? ' · por subir' : ''); }
+function plLabel(p){ return fmtD(p.fecha) + ' · ' + (p.auditor && p.auditor.nombre || 'Sin auditor') + ' · ' + p.filas.length + ' conf.' + (p._dirty ? ' · por subir' : '') + (p.fecha !== today() ? ' · historial' : ''); }
 function renderRegistro(){
-  const list = activas();
+  const list = delDia();
   const sel = $('#selPl');
-  if (!S.cur || !S.pl.has(S.cur) || S.pl.get(S.cur)._deleted) S.cur = list[0] ? list[0].id : null;
+  const actual = S.cur && S.pl.get(S.cur);
+  const valida = actual && !actual._deleted && (actual.fecha === today() || S.cur === verHist);
+  if (!valida) { S.cur = list[0] ? list[0].id : null; verHist = null; }
+  if (S.cur && !list.some(p => p.id === S.cur)) list.unshift(S.pl.get(S.cur)); // la del historial que se abrió
   lsSet('rc_cur', S.cur);
   sel.innerHTML = list.map(p => '<option value="' + esc(p.id) + '">' + esc(plLabel(p)) + '</option>').join('');
   sel.value = S.cur || '';
   $('#regEmpty').hidden = !!list.length; $('#regBody').hidden = !list.length; sel.disabled = !list.length;
+  const viejas = activas().length - delDia().length;
+  $('#regEmptyHist').textContent = viejas ? 'Las ' + viejas + ' planillas de días pasados siguen guardadas en Tablero → Historial de planillas.' : '';
   const p = curPl(); if (!p) return;
   const setv = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v || ''; };
   setv('#plFecha', p.fecha); setv('#plSede', p.sede); setv('#plAudNom', p.auditor.nombre); setv('#plAudSap', p.auditor.sap);
@@ -2373,8 +2383,12 @@ function bind(){
   // tablero
   ['#tbSem', '#tbOp', '#tbProv'].forEach(id => $(id).addEventListener('change', renderTablero));
   $('#tbCrit').addEventListener('click', e => { const tr = e.target.closest('tr[data-cat]'); if (tr) { S.tCat = tr.dataset.cat; renderTablero(); window.scrollTo({top: 0, behavior: 'smooth'}); } });
-  $('#tbHist').addEventListener('click', e => { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = tr.dataset.pl; renderAll(); setTab('registro'); } });
-  $('#tbHist').addEventListener('keydown', e => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = tr.dataset.pl; renderAll(); setTab('registro'); } } });
+  $('#tbHist').addEventListener('click', e => { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = verHist = tr.dataset.pl; renderAll(); setTab('registro'); } });
+  $('#tbHist').addEventListener('keydown', e => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = verHist = tr.dataset.pl; renderAll(); setTab('registro'); } } });
+  // Si cambia el día con la app abierta, Registro pasa solo a las planillas del nuevo día
+  let diaVisto = today();
+  const revisarDia = () => { if (today() !== diaVisto) { diaVisto = today(); verHist = null; renderAll(); } };
+  setInterval(revisarDia, 60000); document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarDia(); });
   const tip = $('#tip');
   document.addEventListener('pointermove', e => {
     const t = e.target.closest && e.target.closest('[data-tip]');
