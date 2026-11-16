@@ -1,6 +1,6 @@
 # Ficha técnica para TI – Paletizado 3D (copia corporativa)
 
-**Uso:** conformación de palets en 3D y toma de datos de posiciones de picking del CEDI ATS R10 Valledupar.
+**Uso:** conformación de palets en 3D y toma de datos de posiciones de picking del CEDI.
 **Responsable:** Luis Alfonso Mendoza Corzo (operador logístico).
 
 ## Qué hace en el equipo

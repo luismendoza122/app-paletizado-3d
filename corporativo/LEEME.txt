@@ -1,4 +1,4 @@
-PALETIZADO 3D - COPIA CORPORATIVA (CEDI ATS R10 Valledupar)
+PALETIZADO 3D - COPIA CORPORATIVA (CEDI)
 ==========================================================
 
 Es la misma app Paletizado 3D, pero se abre desde este PC sin instalar nada y sin

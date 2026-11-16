@@ -4,7 +4,7 @@ Agente solo para Paletizado 3D. No reemplaza a THEMENDO ni choca con él: tiene 
 
 ## Crearlo (5 minutos, con la cuenta de la empresa)
 1. Abre https://m365.cloud.microsoft/chat → **Agentes** → **Crear agente** → pestaña **Configurar**.
-2. **Nombre:** `Paletizado 3D – CEDI ATS R10`
+2. **Nombre:** `Paletizado 3D – CEDI`
 3. **Descripción:** `Ayuda a usar la app Paletizado 3D: toma de datos, reglas de arrume, reubicación, pedidos y la copia corporativa del PC.`
 4. **Instrucciones:** copia todo el texto de `instrucciones-agente.txt`.
 5. **Conocimiento:** sube `conocimiento-paletizado.md` (y, si quieres, `LEEME.txt` y `TI\FICHA-TI.md` de la copia).

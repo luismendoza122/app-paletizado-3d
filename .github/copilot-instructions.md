@@ -1,4 +1,4 @@
-# Instrucciones para GitHub Copilot – Paletizado 3D (CEDI ATS R10 Valledupar)
+# Instrucciones para GitHub Copilot – Paletizado 3D (CEDI)
 
 ## Qué es
 App móvil (web + APK de Android con Capacitor) para tomar los datos de cada posición de picking del CEDI, calcular la clase de arrume de cada artículo (BASE / MEDIO / TOPE), proponer la reubicación dentro de cada pasillo y probarla con pedidos reales en 3D y en video.

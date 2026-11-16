@@ -1,4 +1,4 @@
-// App Paletizado 3D – CEDI ATS R10 Valledupar
+// App Paletizado 3D – CEDI
 // Pantallas: Inicio · Ubicaciones · Reubicar · Pedidos · Calcular palet · Ajustes
 import { articuloDesdeFila } from './motor/articulo.js';
 import { calcularIndices } from './motor/indice.js';

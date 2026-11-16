@@ -31,7 +31,7 @@ cpSync(www, join(salida, 'app'), {
 // 3) Conocimiento del agente de Copilot: la misma biblioteca de ayuda que trae la app
 const { BIBLIOTECA } = await import(new URL('../www/js/biblioteca.js', import.meta.url));
 const temas = [...new Set(BIBLIOTECA.map((f) => f.tema))];
-const md = ['# Conocimiento de Paletizado 3D (CEDI ATS R10 Valledupar)', '',
+const md = ['# Conocimiento de Paletizado 3D (CEDI)', '',
   'Sale de la biblioteca de ayuda de la app. Úsalo para responder sobre la app y las reglas del CEDI.', ''];
 for (const t of temas) {
   md.push(`## ${t}`, '');

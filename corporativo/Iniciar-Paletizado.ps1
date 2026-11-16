@@ -1,5 +1,5 @@
 <#
-  Paletizado 3D – copia corporativa (CEDI ATS R10 Valledupar)
+  Paletizado 3D – copia corporativa (CEDI)
   Abre la app en este PC sin instalar nada y sin permisos de administrador.
   Se adapta solo a lo que pida TI:
     - Modo de lenguaje restringido (AppLocker/WDAC)  -> abre la versión web oficial.

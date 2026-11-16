@@ -155,7 +155,7 @@ export async function grabarVideo(estiba, palet, colores, { titulo = '', alAvanz
       g.fillText(`Cód. ${c.codigo}${c.ubicacion ? ` · ubicación ${c.ubicacion}` : ''}${c.art?.peso ? ` · ${c.art.peso} kg` : ''}`.slice(0, 60), 62, HV + 160);
     }
     g.fillStyle = '#999'; g.font = '16px sans-serif';
-    g.fillText('Paletizado 3D · CEDI ATS R10 Valledupar', 24, H - 14);
+    g.fillText('Paletizado 3D · CEDI', 24, H - 14);
   };
 
   grabadora.start(500);

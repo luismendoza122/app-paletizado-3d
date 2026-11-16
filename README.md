@@ -1,4 +1,4 @@
-# Paletizado 3D – CEDI ATS R10 Valledupar
+# Paletizado 3D – CEDI
 
 App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la ruta de picking, el palet salga bien armado: pesado abajo, delicado arriba. Calcula y muestra los palets en 3D.
 
