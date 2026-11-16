@@ -75,6 +75,10 @@ try {
     $igual = ($r.RawContentLength -eq (Get-Item -LiteralPath $local).Length)
     Revisar "$($a[0]) ($($a[1]))" ($r.StatusCode -eq 200 -and $r.Headers['Content-Type'] -like $a[1] -and $igual) "$($r.Headers['Content-Type']) $($r.RawContentLength)"
   }
+  if ([System.Net.Sockets.Socket]::OSSupportsIPv6) {
+    $ok6 = $false; try { $ok6 = (Pedir "http://[::1]:$puerto/__estado").Content -match 'paletizado' } catch {}
+    Revisar 'También responde en [::1] (localhost por IPv6)' $ok6
+  }
   $e = Pedir "$base/__estado"
   Revisar 'Estado responde paletizado-3d-corporativo' ($e.Content -match 'paletizado-3d-corporativo')
   $t = Pedir-Crudo $puerto "GET /..%2f..%2fTI%2fintegridad.json HTTP/1.1`r`nHost: x`r`n`r`n"

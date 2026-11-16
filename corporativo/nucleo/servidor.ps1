@@ -1,5 +1,5 @@
 # Servidor local de Paletizado 3D para PCs corporativos.
-# - Solo escucha en 127.0.0.1 (no se ve desde la red, Windows no pide permiso de firewall).
+# - Solo escucha en 127.0.0.1 y [::1] (no se ve desde la red, Windows no pide permiso de firewall).
 # - No usa http.sys ni reservas de URL: no necesita administrador.
 # - Solo entrega archivos de la carpeta app (GET y HEAD). No escribe nada en la carpeta.
 # Funciona en Windows PowerShell 5.1 y en PowerShell 7.
@@ -101,14 +101,25 @@ function Invoke-Solicitud {
 }
 
 function New-Escucha {
-  # Intenta abrir el puerto en 127.0.0.1. Devuelve el TcpListener o $null si está ocupado.
+  # Abre el puerto en 127.0.0.1 y, si el PC tiene IPv6, también en [::1] (así "localhost" sirve en
+  # cualquier navegador). Devuelve la lista de escuchas, o $null si el puerto está ocupado.
   param([int]$Puerto)
   try {
     $l = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Puerto)
     $l.Server.ExclusiveAddressUse = $true
     $l.Start()
-    return $l
   } catch { return $null }
+  $lista = New-Object System.Collections.ArrayList
+  [void]$lista.Add($l)
+  if ([System.Net.Sockets.Socket]::OSSupportsIPv6) {
+    try {
+      $l6 = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::IPv6Loopback, $Puerto)
+      $l6.Server.ExclusiveAddressUse = $true
+      $l6.Start()
+      [void]$lista.Add($l6)
+    } catch {}
+  }
+  return ,$lista
 }
 
 function Test-PaletizadoEnPuerto {
@@ -140,7 +151,7 @@ function Start-BucleServidor {
   while ($true) {
     $vuelta++
     if ($ArchivoParar -and ($vuelta % 20 -eq 0) -and (Test-Path -LiteralPath $ArchivoParar)) { break }
-    while ($Escucha.Pending()) { [void]$espera.Add(@{ c = $Escucha.AcceptTcpClient(); t = [DateTime]::UtcNow }) }
+    foreach ($l in $Escucha) { while ($l.Pending()) { [void]$espera.Add(@{ c = $l.AcceptTcpClient(); t = [DateTime]::UtcNow }) } }
     $hubo = $false
     for ($i = $espera.Count - 1; $i -ge 0; $i--) {
       $e = $espera[$i]

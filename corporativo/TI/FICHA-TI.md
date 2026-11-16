@@ -9,7 +9,7 @@
 | Instalación | Ninguna. Carpeta portable; se puede borrar en cualquier momento. |
 | Permisos | Usuario estándar. No pide administrador ni elevación (UAC). |
 | Proceso | `powershell.exe` (Windows PowerShell 5.1) ejecutando `Iniciar-Paletizado.ps1` con `-ExecutionPolicy Bypass` **solo para ese proceso** (no cambia la política del equipo). |
-| Red local | Servidor de archivos estáticos de solo lectura con `System.Net.Sockets.TcpListener` en **127.0.0.1** (puerto 8765 o siguiente libre). No usa http.sys ni reservas de URL; no abre puertos hacia la red; Windows Firewall no pide permiso. Solo GET/HEAD; POST/PUT dan 405; rutas fuera de `app\` dan 403. |
+| Red local | Servidor de archivos estáticos de solo lectura con `System.Net.Sockets.TcpListener` en **127.0.0.1** y **[::1]** si hay IPv6 (puerto 8765 o siguiente libre). No usa http.sys ni reservas de URL; no abre puertos hacia la red; Windows Firewall no pide permiso. Solo GET/HEAD; POST/PUT dan 405; rutas fuera de `app\` dan 403. |
 | Archivos escritos | Solo `%LOCALAPPDATA%\Paletizado3D-Corporativo\` (registro.txt ≤ 1 MB con rotación, puerto.txt, informe-pc.txt). |
 | Registro de Windows | No lo toca. Sin tareas programadas, servicios ni inicio automático. |
 | Navegador | Chrome o Edge con `--app=http://127.0.0.1:<puerto>/` usando el perfil normal del usuario (respeta políticas del navegador, proxy y certificados corporativos). |

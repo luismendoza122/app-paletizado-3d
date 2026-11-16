@@ -58,7 +58,9 @@ jobs:
           pip install playwright openpyxl
           python -m playwright install chromium
           $p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','salida\Paletizado3D-Corporativo\Iniciar-Paletizado.ps1','-Navegador','ninguno','-Puerto','5173','-ArchivoParar',"$env:TEMP\parar-ui.txt" -PassThru -WindowStyle Hidden
-          for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest http://127.0.0.1:5173/__estado -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep -Milliseconds 500 } }
+          $listo = $false
+          for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest http://localhost:5173/__estado -UseBasicParsing -TimeoutSec 2 | Out-Null; $listo = $true; break } catch { Start-Sleep -Milliseconds 500 } }
+          if (-not $listo) { Get-Content "$env:LOCALAPPDATA\Paletizado3D-Corporativo\registro.txt" -Tail 20; Write-Host "Proceso terminado: $($p.HasExited) salida $($p.ExitCode)"; exit 1 }
           $env:PYTHONIOENCODING = 'utf-8'
           python scripts/probar_ui.py; if ($LASTEXITCODE -ne 0) { exit 1 }
           python scripts/probar_admin_ui.py; if ($LASTEXITCODE -ne 0) { exit 1 }

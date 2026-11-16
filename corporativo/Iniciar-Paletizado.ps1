@@ -169,6 +169,6 @@ Write-Host "Registro: $registro" -ForegroundColor DarkGray
 try {
   Start-BucleServidor -Escucha $escucha -Raiz $app -Version $VERSION -ArchivoParar $ArchivoParar
 } finally {
-  try { $escucha.Stop() } catch {}
+  foreach ($l in $escucha) { try { $l.Stop() } catch {} }
   Write-Registro 'Servidor detenido.'
 }
