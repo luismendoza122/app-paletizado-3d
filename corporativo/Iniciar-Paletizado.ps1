@@ -18,7 +18,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$VERSION = '0.8.3-corp.1'
+$VERSION = '0.8.4-corp.1'
 $WEB_OFICIAL = 'https://luismendoza122.github.io/app-paletizado-3d/'
 $raiz = $PSScriptRoot
 $app = Join-Path $raiz 'app'
