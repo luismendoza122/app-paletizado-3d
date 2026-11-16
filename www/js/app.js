@@ -5,7 +5,8 @@ import { calcularIndices } from './motor/indice.js';
 import { paletMono } from './motor/mono.js';
 import { proponerReubicacion } from './motor/reubicacion.js';
 import { simularPedido } from './motor/simulacion.js';
-import { leerArchivo, aCSV } from './datos/importar.js';
+import { leerListaPedido, lineasDesdeFilas, unirLineas, totalesPedido, armarPedido, listaDeCarga, pedidoParaThemendo, buscarArticulo } from './motor/pedido.js';
+import { leerArchivo, aCSV, leerCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
 import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
 import { BIBLIOTECA } from './biblioteca.js';
@@ -18,6 +19,8 @@ export const REPO = 'luismendoza122/app-paletizado-3d';
 const URL_APK = `https://github.com/${REPO}/releases/latest/download/paletizado-3d.apk`;
 const ES_APK = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
+const URL_THEMENDO = 'https://m365.cloud.microsoft/chat/agent/T_0beb0366-1b5b-39eb-d032-63302b709bc4.357c5821-89ff-4709-8f75-b75d87754475.gpt.a7b3a646-f2a2-4c8d-a566-90c7e1e2e491';
+
 const PALET_EJEMPLO = { largo: 1200, ancho: 1000, altoBase: 150, tara: 25, cargaMax: 1000, alturaMaxTotal: 1800, voladizoMax: 0 };
 const REGLAS_EJEMPLO = { soporteMinimo: 0.7, desviacionCGMax: 0.1 };
 
@@ -28,6 +31,9 @@ const estado = {
   reglas: leer('reglas', REGLAS_EJEMPLO),
   paletConfirmado: leer('paletConfirmado', false),
   propuesta: null,     // resultado de proponerReubicacion
+  pedidoCalc: leer('pedidoCalc', []),     // pedido de la pestaña Calcular palet: [{ codigo, cajas }]
+  pedidoOpc: leer('pedidoOpc', { orden: 'peso', separar: true }),
+  pedidoArmado: null,  // resultado de armarPedido
   posiciones: [],      // posiciones ocupadas con artículo e índice
   colores: new Map(),
   tarea: leer('tarea', null),            // tarea abierta por enlace (modo operador)
@@ -96,7 +102,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.8.3';
+const VERSION_APP = '0.8.4';
 function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -536,12 +542,45 @@ const pantallas = {
   },
 
   calculadora() {
-    const arts = new Map();
-    for (const p of estado.posiciones) if (!p.faltan.length && !arts.has(p.art.codigo)) arts.set(p.art.codigo, p.art);
-    return `<section class="tarjeta">
+    const arts = articulosMedidos();
+    const lista = [...arts.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    const lineas = estado.pedidoCalc.filter((l) => arts.has(l.codigo));
+    const t = totalesPedido(lineas, arts);
+    const opc = estado.pedidoOpc;
+    return `<section class="tarjeta" id="armarPedido">
+      <h2>Armar palets de un pedido</h2>
+      <p class="nota">Agrega los artículos medidos y cuántas cajas lleva cada uno (por ejemplo un pedido de 100 cajas). La app arma los palets que hagan falta: pesado y resistente abajo, delicado arriba, sin pasar el peso ni la altura del palet. Te da el peso y las medidas de cada palet.</p>
+      ${lista.length ? '' : '<div class="aviso">Todavía no hay artículos con medidas y peso completos. Tómalos en "Tomar datos" o carga la hoja en Inicio.</div>'}
+      <label>Buscar artículo medido<input id="pBuscar" type="search" autocomplete="off" placeholder="Código o nombre" ${lista.length ? '' : 'disabled'}></label>
+      <div id="pSugeridos" class="sugeridos"></div>
+      <div class="rapidas">
+        <label class="boton sec archivo">📄 Cargar Excel o CSV<input type="file" id="pArchivo" accept=".xlsx,.csv,.txt" hidden></label>
+        <button class="boton sec" id="pFoto">📷 Foto del pedido → THEMENDO</button>
+      </div>
+      <details id="pPegarCaja" ${estado.pedidoPegarAbierto ? 'open' : ''}><summary>Pegar una lista (la respuesta de THEMENDO u otra)</summary>
+        <p class="nota">Una línea por artículo: código y cajas. Ej: <code>7701234;10</code> · <code>7701234 10</code> · <code>10 x 7701234</code></p>
+        <textarea id="pPegar" rows="5" spellcheck="false" placeholder="CODIGO;CAJAS"></textarea>
+        <button class="boton" id="pAgregarLista">Agregar la lista al pedido</button>
+      </details>
+      <div id="pAvisos"></div>
+      <h3>Pedido: ${fmt(lineas.length)} artículos · ${fmt(t.cajas)} cajas · ${fmt(t.peso, 1)} kg · ${fmt(t.volumen, 2)} m³</h3>
+      ${lineas.length ? `<div class="tabla"><table><tr><th>Artículo</th><th>Cajas</th><th>Peso</th><th></th></tr>
+        ${lineas.map((l) => { const a = arts.get(l.codigo); return `<tr><td>${esc(a.nombre)}<br><small>${esc(a.codigo)} · ${fmt(a.largo)}×${fmt(a.ancho)}×${fmt(a.alto)} mm · ${fmt(a.peso, 1)} kg${a.delicado ? ' · delicado' : ''}${a.liquido ? ' · líquido' : ''}</small></td>
+          <td><input class="corto" type="number" inputmode="numeric" min="0" max="3000" value="${l.cajas}" data-pcajas="${esc(l.codigo)}"></td>
+          <td class="num">${fmt(l.cajas * a.peso, 1)} kg</td><td><button class="boton sec mini" data-pquitar="${esc(l.codigo)}" aria-label="Quitar">×</button></td></tr>`; }).join('')}
+      </table></div>` : '<p class="nota">El pedido está vacío.</p>'}
+      <div class="fila">
+        <label>Orden para armar<select id="pOrden"><option value="peso" ${opc.orden !== 'ruta' ? 'selected' : ''}>Pesado primero (recomendado)</option><option value="ruta" ${opc.orden === 'ruta' ? 'selected' : ''}>Orden de la ruta de picking</option></select></label>
+        <label class="check"><input type="checkbox" id="pSeparar" ${opc.separar !== false ? 'checked' : ''}> Alimentos y no alimentos en palets aparte</label>
+      </div>
+      <button class="boton" id="pArmar" ${lineas.length ? '' : 'disabled'}>Armar palets</button>
+      <button class="boton sec" id="pVaciar" ${lineas.length ? '' : 'disabled'}>Vaciar pedido</button>
+      <div id="resultadoArmado"></div>
+    </section>
+    <section class="tarjeta">
       <h2>Calcular palet de un solo artículo</h2>
       <div class="fila">
-        <label>Artículo de la hoja<select id="cArt"><option value="">— Escribir medidas a mano —</option>${[...arts.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)).map((a) => `<option value="${esc(a.codigo)}">${esc(a.nombre)} (${esc(a.codigo)})</option>`).join('')}</select></label>
+        <label>Artículo de la hoja<select id="cArt"><option value="">— Escribir medidas a mano —</option>${lista.map((a) => `<option value="${esc(a.codigo)}">${esc(a.nombre)} (${esc(a.codigo)})</option>`).join('')}</select></label>
       </div>
       <div class="fila">
         <label>Largo A (mm)<input id="cA" type="number" inputmode="numeric" value="400"></label>
@@ -659,6 +698,110 @@ function tablaComparacion(actual, propuesta) {
       if (propuesta && mayorEsMejor !== null && a !== b) cls = (mayorEsMejor ? b > a : b < a) ? 'mejor' : 'peor';
       return `<tr><td>${t}</td><td class="num">${fmt(a)}</td>${propuesta ? `<td class="num ${cls}">${fmt(b)}</td>` : ''}</tr>`;
     }).join('')}</table></div>`;
+}
+
+
+// ---------- Armar palets de un pedido (pestaña Calcular palet) ----------
+// Artículos con medidas y peso completos (uno por código).
+function articulosMedidos() {
+  const m = new Map();
+  for (const p of estado.posiciones) if (!p.faltan.length && !m.has(p.art.codigo)) m.set(p.art.codigo, p.art);
+  return m;
+}
+
+// Lo que el motor necesita de cada artículo: clase, índice, sección (alimentos/no alimentos) y ruta.
+function infoArticulos() {
+  const m = new Map();
+  for (const p of estado.posiciones) {
+    if (p.faltan.length || m.has(p.art.codigo)) continue;
+    m.set(p.art.codigo, { art: p.art, ia: p.ia, clase: p.clase, seccion: p.fila.SECCION, secuencia: Number(p.fila.SECUENCIA_RUTA) || 0, ubicacion: p.fila.CODIGO });
+  }
+  return m;
+}
+
+function guardarPedidoCalc(lineas) {
+  estado.pedidoCalc = unirLineas(lineas);
+  estado.pedidoArmado = null;
+  guardar('pedidoCalc', estado.pedidoCalc);
+}
+
+function avisosLista(r) {
+  const partes = [];
+  if (r.sinArticulo?.length) partes.push(`<div class="aviso">No encontré estos artículos entre los medidos (o vienen marcados para revisar). Tómalos en "Tomar datos" o corrige el código:<br>${r.sinArticulo.slice(0, 30).map(esc).join('<br>')}</div>`);
+  if (r.sinCantidad?.length) partes.push(`<div class="aviso">Sin cantidad de cajas:<br>${r.sinCantidad.slice(0, 30).map(esc).join('<br>')}</div>`);
+  return partes.join('');
+}
+
+async function mostrarArmado() {
+  const cont = $('#resultadoArmado');
+  const r = estado.pedidoArmado;
+  if (!cont || !r) return;
+  const R = r.resumen;
+  const alertas = [];
+  if (r.faltantes.length) alertas.push(`Sin medidas o peso, no se armaron: ${r.faltantes.map(esc).join(', ')}.`);
+  if (r.recortado) alertas.push('El pedido es muy grande: se armaron las primeras 3.000 cajas.');
+  if (R.noCaben) alertas.push(`${R.noCaben} cajas no caben en el palet (revisa sus medidas).`);
+  if (R.sobrecarga) alertas.push(`${R.sobrecarga} cajas quedan con más peso encima del que aguantan.`);
+  if (R.sobreDelicado) alertas.push(`${R.sobreDelicado} cajas quedan encima de un delicado.`);
+  if (R.cgFuera) alertas.push(`${R.cgFuera} palets con el centro de gravedad corrido: muévelos con cuidado.`);
+  const sobrePeso = r.estibas.filter((e) => e.sobrePeso).length;
+  if (sobrePeso) alertas.push(`${sobrePeso} palets pasan la carga máxima del palet.`);
+  cont.innerHTML = `
+    <div class="cifras">
+      <div class="cifra"><b>${R.palets}</b><span>palets</span></div>
+      <div class="cifra"><b>${fmt(R.cajas)}</b><span>cajas armadas</span></div>
+      <div class="cifra"><b>${fmt(R.pesoTotal, 1)} kg</b><span>peso total (con estibas)</span></div>
+      <div class="cifra"><b>${fmt(R.pesoMax, 1)} kg</b><span>palet más pesado</span></div>
+      <div class="cifra"><b>${fmt(R.alturaMax)} mm</b><span>palet más alto</span></div></div>
+    ${alertas.length ? `<div class="aviso">${alertas.join('<br>')}</div>` : '<p class="nota bien">Sin alertas: ningún palet pasa el peso ni la altura, y nada pesado queda sobre lo delicado.</p>'}
+    ${r.estibas.map((e, i) => `<div class="palet-arm">
+      <h3>Palet ${i + 1} · ${esc(e.zona)}</h3>
+      <p class="nota"><b>${e.totalCajas} cajas · ${fmt(e.pesoTotal, 1)} kg</b> (con estiba) · medidas ${fmt(e.largoOcupado)} × ${fmt(e.anchoOcupado)} × ${fmt(e.alturaTotal)} mm · ocupación ${fmt(e.usoVolumen * 100)} %${e.cgFuera ? ' · <b class="peor">centro de gravedad corrido</b>' : ''}${e.sobrePeso ? ' · <b class="peor">pasa la carga máxima</b>' : ''}</p>
+      <div class="tabla"><table><tr><th>Artículo (de abajo hacia arriba)</th><th>Cajas</th><th>Peso</th></tr>
+        ${listaDeCarga(e).map((x) => `<tr><td>${esc(x.nombre)} <small>${esc(x.codigo)}${x.delicado ? ' · delicado' : ''}${x.liquido ? ' · líquido' : ''}</small></td><td class="num">${x.cajas}</td><td class="num">${fmt(x.peso, 1)} kg</td></tr>`).join('')}
+      </table></div>
+      <button class="boton sec" data-ver3d="${i}">Ver en 3D y video</button></div>`).join('')}
+    <div class="rapidas">
+      <button class="boton" id="pExcel">Descargar Excel del armado</button>
+      <button class="boton sec" id="pMover">Datos para mover cada artículo</button>
+    </div>
+    <div id="pMoverRes"></div>
+    <div id="vistaArmado"></div>`;
+  cont.querySelectorAll('[data-ver3d]').forEach((b) => b.addEventListener('click', async () => {
+    const i = Number(b.dataset.ver3d);
+    const e = r.estibas[i];
+    await mostrarEstiba($('#vistaArmado'), { ...e, numero: i + 1 }, `Pedido · palet ${i + 1} · ${e.zona}`);
+    $('#vistaArmado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  $('#pExcel').addEventListener('click', async () => {
+    try {
+      const palets = r.estibas.map((e, i) => ({ PALET: i + 1, ZONA: e.zona, CAJAS: e.totalCajas, PESO_KG: e.pesoTotal, LARGO_MM: e.largoOcupado, ANCHO_MM: e.anchoOcupado, ALTO_MM: e.alturaTotal, OCUPACION_PCT: Math.round(e.usoVolumen * 100), CG_CORRIDO: e.cgFuera ? 'SI' : 'NO', PASA_CARGA_MAX: e.sobrePeso ? 'SI' : 'NO' }));
+      const carga = r.estibas.flatMap((e, i) => listaDeCarga(e).map((x, j) => ({ PALET: i + 1, ORDEN: j + 1, CODIGO_ARTICULO: x.codigo, ARTICULO: x.nombre, CAJAS: x.cajas, PESO_KG: x.peso, DELICADO: x.delicado ? 'SI' : 'NO', LIQUIDO: x.liquido ? 'SI' : 'NO' })));
+      const hojas = { Palets: palets, 'Lista de carga': carga };
+      if (estado.paraMover?.length) hojas['Para mover'] = estado.paraMover;
+      await descargar(nombreArchivo('armado-pedido', 'xlsx'), libroExcel(hojas));
+    } catch (e) { notificar(e.message || String(e), 'error'); }
+  });
+  $('#pMover').addEventListener('click', () => mostrarParaMover());
+}
+
+// Para cada artículo del pedido: cómo queda un palet completo de ese artículo (para moverlo o reubicarlo).
+function mostrarParaMover() {
+  const arts = articulosMedidos();
+  const filas = [];
+  for (const l of estado.pedidoCalc.slice(0, 40)) {
+    const a = arts.get(l.codigo);
+    if (!a) continue;
+    const r = paletMono(a, estado.palet, { limiteMs: 150 });
+    if (!r.colocaciones?.length) continue;
+    filas.push({ CODIGO_ARTICULO: a.codigo, ARTICULO: a.nombre, CAJA_MM: `${a.largo}x${a.ancho}x${a.alto}`, PESO_CAJA_KG: a.peso, CAJAS_POR_CAPA: r.cajasPorCapa, CAPAS: r.capas, CAJAS_PALET_COMPLETO: r.totalCajas, PESO_PALET_KG: Math.round(r.pesoTotal * 10) / 10, ALTO_PALET_MM: r.alturaTotal, PALETS_PARA_EL_PEDIDO: Math.ceil(l.cajas / r.totalCajas) });
+  }
+  estado.paraMover = filas;
+  $('#pMoverRes').innerHTML = filas.length ? `<h3>Palet completo de cada artículo</h3>
+    <p class="nota">Sirve para mover o reubicar un artículo: cuántas cajas caben en un palet solo de ese artículo, cuánto pesa y qué tan alto queda.</p>
+    <div class="tabla"><table><tr><th>Artículo</th><th>TI × HI</th><th>Cajas</th><th>Peso</th><th>Alto</th></tr>
+    ${filas.map((f) => `<tr><td>${esc(f.ARTICULO)} <small>${esc(f.CODIGO_ARTICULO)} · caja ${esc(f.CAJA_MM)} mm · ${fmt(f.PESO_CAJA_KG, 1)} kg</small></td><td class="num">${f.CAJAS_POR_CAPA} × ${f.CAPAS}</td><td class="num">${f.CAJAS_PALET_COMPLETO}</td><td class="num">${fmt(f.PESO_PALET_KG, 1)} kg</td><td class="num">${fmt(f.ALTO_PALET_MM)} mm</td></tr>`).join('')}
+    </table></div>` : '<p class="nota">No hay artículos con medidas para calcular.</p>';
 }
 
 async function mostrarEstiba(cont, estiba, titulo = '') {
@@ -1311,6 +1454,89 @@ function conectar(tab) {
     if (estado.pedidoSel) mostrarPedido(estado.pedidoSel);
   }
   if (tab === 'calculadora') {
+    const arts = articulosMedidos();
+    const repintar = () => { const y = window.scrollY; mostrar('calculadora'); window.scrollTo(0, y); };
+    const pintarSugeridos = () => {
+      const q = ($('#pBuscar')?.value || '').trim().toLowerCase();
+      const caja = $('#pSugeridos');
+      if (!q) { caja.innerHTML = ''; return; }
+      const hallados = [...arts.values()].filter((a) => a.codigo.toLowerCase().includes(q) || a.nombre.toLowerCase().includes(q)).slice(0, 8);
+      caja.innerHTML = hallados.length ? hallados.map((a) => `<div class="sugerido"><span>${esc(a.nombre)} <small>${esc(a.codigo)} · ${fmt(a.peso, 1)} kg</small></span>
+        <input class="corto" type="number" inputmode="numeric" min="1" value="1" data-pnuevo="${esc(a.codigo)}" aria-label="Cajas"><button class="boton mini" data-pagregar="${esc(a.codigo)}">Agregar</button></div>`).join('')
+        : '<p class="nota">No hay artículos medidos con ese código o nombre.</p>';
+    };
+    $('#pBuscar')?.addEventListener('input', pintarSugeridos);
+    $('#pSugeridos')?.addEventListener('click', (e) => {
+      const cod = e.target.dataset?.pagregar;
+      if (!cod) return;
+      const n = Math.round(Number($(`[data-pnuevo="${CSS.escape(cod)}"]`).value) || 0);
+      if (n <= 0) { notificar('Escribe cuántas cajas', 'error'); return; }
+      guardarPedidoCalc([...estado.pedidoCalc, { codigo: cod, cajas: n }]);
+      notificar(`Agregado: ${n} cajas`);
+      repintar();
+    });
+    document.querySelectorAll('[data-pcajas]').forEach((inp) => inp.addEventListener('change', () => {
+      const n = Math.max(0, Math.min(3000, Math.round(Number(inp.value) || 0)));
+      guardarPedidoCalc(estado.pedidoCalc.map((l) => (l.codigo === inp.dataset.pcajas ? { ...l, cajas: n } : l)));
+      repintar();
+    }));
+    document.querySelectorAll('[data-pquitar]').forEach((b) => b.addEventListener('click', () => {
+      guardarPedidoCalc(estado.pedidoCalc.filter((l) => l.codigo !== b.dataset.pquitar));
+      repintar();
+    }));
+    $('#pAgregarLista')?.addEventListener('click', () => {
+      const r = leerListaPedido($('#pPegar').value, arts);
+      guardarPedidoCalc([...estado.pedidoCalc, ...r.lineas]);
+      estado.pedidoPegarAbierto = false;
+      repintar();
+      $('#pAvisos').innerHTML = (r.lineas.length ? `<p class="nota bien">Se agregaron ${r.lineas.length} artículos (${fmt(r.lineas.reduce((s, l) => s + l.cajas, 0))} cajas).</p>` : '') + avisosLista(r);
+    });
+    $('#pArchivo')?.addEventListener('change', async (e) => {
+      const archivo = e.target.files?.[0];
+      if (!archivo) return;
+      try {
+        let filas = [];
+        let r;
+        if (/\.(csv|txt)$/i.test(archivo.name)) {
+          const texto = await archivo.text();
+          filas = leerCSV(texto);
+          if (!filas.length || !Object.keys(filas[0]).some((k) => /COD|SKU|EAN|GTIN/.test(k))) filas = null;
+          r = filas ? lineasDesdeFilas(filas, arts) : leerListaPedido(texto, arts);
+        } else {
+          if (!window.XLSX) throw new Error('No se pudo cargar el lector de Excel. Guarda la hoja como CSV e impórtala así.');
+          const libro = window.XLSX.read(await archivo.arrayBuffer(), { type: 'array' });
+          const hoja = libro.Sheets[libro.SheetNames[0]];
+          filas = window.XLSX.utils.sheet_to_json(hoja, { defval: '', raw: false }).map((f) => Object.fromEntries(Object.entries(f).map(([k, v]) => [String(k).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '_'), v])));
+          r = lineasDesdeFilas(filas, arts);
+        }
+        guardarPedidoCalc([...estado.pedidoCalc, ...r.lineas]);
+        repintar();
+        $('#pAvisos').innerHTML = `<p class="nota ${r.lineas.length ? 'bien' : ''}">${esc(archivo.name)}: ${r.lineas.length} artículos agregados.</p>` + avisosLista(r);
+      } catch (err) { notificar(err.message || String(err), 'error'); }
+    });
+    $('#pFoto')?.addEventListener('click', async () => {
+      const texto = pedidoParaThemendo(arts.size);
+      try { await navigator.clipboard.writeText(texto); notificar('Instrucciones copiadas: pégalas en THEMENDO y adjunta la foto', 'ok'); }
+      catch { window.prompt('Copia esto y pégalo en THEMENDO junto con la foto:', texto); }
+      window.open(URL_THEMENDO, '_blank', 'noopener');
+      estado.pedidoPegarAbierto = true;
+      $('#pPegarCaja').open = true;
+      $('#pAvisos').innerHTML = `<div class="aviso">En Copilot (THEMENDO): 1) pega el texto copiado, 2) toca 📎 o la cámara y adjunta la foto del pedido, 3) envía. Cuando responda, copia su lista, vuelve aquí y pégala en "Pegar una lista".</div>`;
+    });
+    $('#pOrden')?.addEventListener('change', (e) => { estado.pedidoOpc = { ...estado.pedidoOpc, orden: e.target.value }; guardar('pedidoOpc', estado.pedidoOpc); });
+    $('#pSeparar')?.addEventListener('change', (e) => { estado.pedidoOpc = { ...estado.pedidoOpc, separar: e.target.checked }; guardar('pedidoOpc', estado.pedidoOpc); });
+    $('#pVaciar')?.addEventListener('click', async () => {
+      if (!(await confirmar('¿Vaciar el pedido? Solo se borra esta lista; los artículos medidos no se tocan.'))) return;
+      guardarPedidoCalc([]); repintar();
+    });
+    $('#pArmar')?.addEventListener('click', async () => {
+      const lineas = estado.pedidoCalc.filter((l) => arts.has(l.codigo));
+      estado.pedidoArmado = armarPedido(lineas, infoArticulos(), estado.palet, estado.reglas, estado.pedidoOpc);
+      estado.paraMover = null;
+      await mostrarArmado();
+      $('#resultadoArmado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    if (estado.pedidoArmado) mostrarArmado();
     $('#cArt').addEventListener('change', (e) => {
       const p = estado.posiciones.find((x) => x.art.codigo === e.target.value);
       if (!p) return;

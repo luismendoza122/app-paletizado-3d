@@ -97,3 +97,15 @@ input:disabled { background: #eef1f4; color: var(--gris); }
 .codigo { font-family: ui-monospace, Consolas, monospace; font-size: 20px; letter-spacing: 2px; }
 textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--borde); border-radius: 8px; box-sizing: border-box; }
 [hidden] { display: none !important; }
+
+/* Armar palets de un pedido (Calcular palet) */
+.sugeridos { display: grid; gap: 6px; margin: 6px 0 10px; }
+.sugerido { display: flex; align-items: center; gap: 8px; background: var(--fondo); border-radius: 10px; padding: 6px 8px; }
+.sugerido span { flex: 1; }
+input.corto { width: 84px; min-height: 44px; text-align: center; }
+.boton.mini { min-height: 44px; min-width: 48px; padding: 6px 10px; }
+label.check { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+label.check input { width: 24px; height: 24px; }
+label.archivo { display: inline-flex; align-items: center; cursor: pointer; }
+.nota.bien { color: var(--verde); font-weight: 600; }
+.palet-arm { border-top: 1px solid #ddd; margin-top: 12px; padding-top: 8px; }

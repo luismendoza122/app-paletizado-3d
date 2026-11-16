@@ -90,7 +90,7 @@ function orientaciones(a) {
 
 // Palet monorreferencia. palet: { largo, ancho, altoBase, tara, cargaMax, alturaMaxTotal, voladizoMax }
 export function paletMono(a, palet, opciones = {}) {
-  const { patron = 'auto', cantidad = null } = opciones;
+  const { patron = 'auto', cantidad = null, limiteMs = 1500 } = opciones;
   const faltan = [];
   if (!a.largo || !a.ancho || !a.alto) faltan.push('medidas');
   if (!a.peso) faltan.push('peso');
@@ -102,7 +102,7 @@ export function paletMono(a, palet, opciones = {}) {
   const util = palet.alturaMaxTotal - palet.altoBase;
   let mejorRes = null;
   for (const [l, w, h] of orientaciones(a)) {
-    const capa = mejorCapa(L, W, l, w);
+    const capa = mejorCapa(L, W, l, w, limiteMs);
     if (capa.n === 0 || h > util) continue;
     const capasAltura = Math.floor(util / h);
     const capasCompresion = a.maxCajasEncima ? a.maxCajasEncima + 1 : Infinity;
