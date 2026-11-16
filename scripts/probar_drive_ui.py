@@ -96,7 +96,7 @@ with sync_playwright() as p:
     pg.click('#drCrear')
     codigo = pg.input_value('#drCodigo')
     ok('1PALETIZADOAAAAAAAAAAAAAAA' in codigo and '1PALETIZADOBBBBBBBBBBBBBBB' in codigo and '"metodo": "post"' in codigo, 'con las direcciones se crea el código del puente (2 carpetas)')
-    pg.click('#drCopiar'); ok(pg.evaluate('navigator.clipboard.readText()') == codigo, 'copiar código')
+    pg.click('#drCopiar'); ok(pg.evaluate('navigator.clipboard.readText()').replace('\r\n', '\n') == codigo, 'copiar código')  # Windows guarda los saltos como \r\n
     open(GS, 'w', encoding='utf-8').write(codigo)
     sim = subprocess.Popen(['node', 'scripts/simular-google.cjs', GS, '3200', 'http://127.0.0.1:3300/']); time.sleep(1.5)
     pg.fill('#drUrl', 'https://script.google.com/macros/s/PALETIZADO_1/exec'); pg.click('#drGuardar')
