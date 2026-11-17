@@ -343,6 +343,7 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
     </div>
 
     <div id="regBody" class="view">
+      <div class="aviso" id="avisoHist" hidden></div>
       <section class="card">
         <h2>Datos de la planilla</h2>
         <div class="g4">
@@ -598,6 +599,19 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 </div>
 
 <!-- confirmación -->
+<div class="modal" id="audBox" hidden role="dialog" aria-modal="true" aria-labelledby="audTit">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-body" style="display:grid;gap:10px">
+      <h2 id="audTit" style="margin:0">Nuevo día de conferencias</h2>
+      <p class="note" id="audMsg" style="margin:0"></p>
+      <label class="fld"><span>Nombre del auditor *</span><input id="audNom" list="dlAuditores" autocomplete="off"></label>
+      <label class="fld"><span>SAP del auditor</span><input id="audSap" inputmode="numeric" autocomplete="off"></label>
+      <p class="note" id="audErr" style="margin:0;color:var(--bad)" hidden>Escribe el nombre del auditor para iniciar el día.</p>
+    </div>
+    <div class="modal-foot"><span class="sp"></span><button class="btn" id="audNo">Cancelar</button><button class="btn primary" id="audYes">Iniciar el día</button></div>
+  </div>
+</div>
+<datalist id="dlAuditores"></datalist>
 <div class="modal" id="confirmBox" hidden role="dialog" aria-modal="true" aria-labelledby="cfMsg">
   <div class="modal-card" style="max-width:440px">
     <div class="modal-body"><p id="cfMsg" style="margin:0;font-size:16px"></p></div>
@@ -665,6 +679,24 @@ function isoWeek(iso){
 }
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 function toast(msg, ms=2600){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms); }
+// Ventana para iniciar un día nuevo: el nombre del auditor es obligatorio
+function pedirAuditor(fecha){
+  return new Promise(res => {
+    const box = $('#audBox'), nom = $('#audNom'), sap = $('#audSap'), err = $('#audErr');
+    const prev = new Map(); for (const p of activas()) { const n = (p.auditor && p.auditor.nombre || '').trim(); if (n && !prev.has(n.toLowerCase())) prev.set(n.toLowerCase(), {nombre: n, sap: p.auditor.sap || ''}); }
+    $('#dlAuditores').innerHTML = [...prev.values()].map(a => '<option value="' + esc(a.nombre) + '">').join('');
+    $('#audMsg').textContent = 'Es la primera planilla del ' + (diaTxt(fecha) ? diaTxt(fecha) + ' ' : '') + fmtD(fecha) + '. Escribe quién hace las conferencias hoy para iniciar el día.';
+    nom.value = S.aud.nombre || ''; sap.value = S.aud.sap || ''; err.hidden = true; box.hidden = false;
+    setTimeout(() => { nom.focus(); nom.select(); }, 30);
+    let sapAuto = sap.value;   // el SAP se ajusta solo al auditor elegido, salvo que lo escriban a mano
+    sap.oninput = () => { sapAuto = null; };
+    nom.oninput = () => { err.hidden = true; const a = prev.get(nom.value.trim().toLowerCase()); if (sapAuto !== null && sap.value === sapAuto) { sap.value = a ? a.sap : (nom.value.trim().toLowerCase() === (S.aud.nombre || '').toLowerCase() ? S.aud.sap || '' : ''); sapAuto = sap.value; } };
+    const done = v => { box.hidden = true; $('#audYes').onclick = $('#audNo').onclick = nom.onkeydown = sap.onkeydown = nom.oninput = sap.oninput = null; res(v); };
+    const ok = () => { const n = nom.value.trim(); if (!n) { err.hidden = false; nom.focus(); return; } done({nombre: n, sap: sap.value.trim()}); };
+    $('#audYes').onclick = ok; $('#audNo').onclick = () => done(null);
+    nom.onkeydown = sap.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } else if (e.key === 'Escape') done(null); };
+  });
+}
 function ask(msg, yes='Sí, continuar', no='Cancelar'){
   return new Promise(res => {
     const box = $('#confirmBox'); $('#cfMsg').textContent = msg; $('#cfYes').textContent = yes; $('#cfNo').textContent = no; box.hidden = false; $('#cfNo').focus();
@@ -785,8 +817,8 @@ function blankPlanilla(){
 }
 const curPl = () => S.pl.get(S.cur) || null;
 const activas = () => [...S.pl.values()].filter(p => !p._deleted).sort((a, b) => (b.fecha||'').localeCompare(a.fecha||'') || b.creado - a.creado);
-// En Registro solo se trabajan las planillas de la fecha de hoy. Las de días pasados siguen guardadas
-// (Tablero, Excel, Drive y nube) y se abren desde Tablero → Historial de planillas.
+// En Registro se abre por defecto la planilla de hoy. Las de días pasados se eligen en el desplegable
+// «Planilla» (agrupado por fecha) o en Tablero → Historial; al recargar vuelve a la de hoy.
 const delDia = () => activas().filter(p => p.fecha === today());
 let verHist = null; // planilla de otro día abierta a propósito desde el historial (no se guarda al recargar)
 // En la planilla de hoy solo se muestran e imprimen las conferencias de hoy. Las planillas de días pasados
@@ -1171,21 +1203,35 @@ function renderHeader(){
 }
 function renderAll(){ renderHeader(); renderRegistro(); renderListas(); if (tab === 'tablero') renderTablero(); if (tab === 'imprimir') renderPrint(); }
 
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const diaTxt = iso => { const d = new Date(iso + 'T12:00:00'); return isNaN(d) ? '' : DIAS[d.getDay()]; };
+function optLabel(p){ return (p.auditor && p.auditor.nombre || 'Sin auditor') + ' · ' + p.filas.length + ' conf.' + (p._dirty ? ' · por subir' : ''); }
+const optTxt = p => (p.fecha === today() ? 'Hoy ' : '') + fmtD(p.fecha) + ' · ' + optLabel(p);
 function plLabel(p){ return fmtD(p.fecha) + ' · ' + (p.auditor && p.auditor.nombre || 'Sin auditor') + ' · ' + p.filas.length + ' conf.' + (p._dirty ? ' · por subir' : '') + (p.fecha !== today() ? ' · historial' : ''); }
 function renderRegistro(){
-  const list = delDia();
+  const list = delDia(), todas = activas();
   const sel = $('#selPl');
   const actual = S.cur && S.pl.get(S.cur);
   const valida = actual && !actual._deleted && (actual.fecha === today() || S.cur === verHist);
   if (!valida) { S.cur = list[0] ? list[0].id : null; verHist = null; }
-  if (S.cur && !list.some(p => p.id === S.cur)) list.unshift(S.pl.get(S.cur)); // la del historial que se abrió
   lsSet('rc_cur', S.cur);
-  sel.innerHTML = list.map(p => '<option value="' + esc(p.id) + '">' + esc(plLabel(p)) + '</option>').join('');
+  // desplegable agrupado por fecha: hoy primero y luego los días pasados, para abrir y editar cualquiera
+  const porFecha = new Map(); for (const p of todas) { const k = p.fecha || ''; if (!porFecha.has(k)) porFecha.set(k, []); porFecha.get(k).push(p); }
+  sel.innerHTML = (S.cur ? '' : '<option value="">' + (todas.length ? '— Elige una planilla de otro día para verla o editarla —' : 'Sin planillas') + '</option>') +
+    [...porFecha].map(([f, ps]) => '<optgroup label="' + esc(f === today() ? 'Hoy · ' + fmtD(f) : (diaTxt(f) ? diaTxt(f) + ' ' : '') + (fmtD(f) || 'Sin fecha')) + '">' +
+      ps.map(p => '<option value="' + esc(p.id) + '">' + esc(optTxt(p)) + '</option>').join('') + '</optgroup>').join('');
   sel.value = S.cur || '';
-  $('#regEmpty').hidden = !!list.length; $('#regBody').hidden = !list.length; sel.disabled = !list.length;
-  const viejas = activas().length - delDia().length;
-  $('#regEmptyHist').textContent = viejas ? 'Las ' + viejas + ' planillas de días pasados siguen guardadas en Tablero → Historial de planillas.' : '';
-  const p = curPl(); if (!p) return;
+  $('#regEmpty').hidden = !!S.cur; $('#regBody').hidden = !S.cur; sel.disabled = !todas.length;
+  const viejas = todas.length - list.length;
+  $('#regEmptyHist').textContent = viejas ? 'Las ' + viejas + ' planillas de días pasados están en el desplegable «Planilla» de arriba, agrupadas por fecha: elige una para verla o corregirla.' : '';
+  const p = curPl();
+  const av = $('#avisoHist');
+  if (p && p.fecha !== today()) {
+    av.hidden = false;
+    av.innerHTML = '<p>Estás viendo la planilla del <b>' + esc((diaTxt(p.fecha) ? diaTxt(p.fecha) + ' ' : '') + fmtD(p.fecha)) + '</b> (día pasado). Lo que cambies se guarda en esa planilla.</p><button type="button" class="btn sm" id="btnVolverHoy">Volver a las planillas de hoy</button>';
+    $('#btnVolverHoy').onclick = () => { verHist = null; S.cur = list[0] ? list[0].id : null; renderAll(); };
+  } else av.hidden = true;
+  if (!p) return;
   const setv = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v || ''; };
   setv('#plFecha', p.fecha); setv('#plSede', p.sede); setv('#plAudNom', p.auditor.nombre); setv('#plAudSap', p.auditor.sap);
   setv('#plCoNom', p.coord.nombre); setv('#plCoSap', p.coord.sap); setv('#plCoFecha', p.coord.fecha);
@@ -1193,7 +1239,7 @@ function renderRegistro(){
   renderFilas();
 }
 const camIcon = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
-function refreshSel(){ const sel = $('#selPl'); for (const o of sel.options) { const p = S.pl.get(o.value); if (p) o.textContent = plLabel(p); } }
+function refreshSel(){ const sel = $('#selPl'); for (const o of sel.options) { const p = S.pl.get(o.value); if (p) o.textContent = optTxt(p); } }
 function renderChips(){
   const crit = S.listas.categorias.filter(c => c.c);
   const p = curPl();
@@ -2343,8 +2389,17 @@ function bind(){
   $$('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (['registro','tablero','imprimir','ajustes'].includes(t) && t !== tab) setTab(t); });
   $('#syncChip').addEventListener('click', () => { setTab('ajustes'); scheduleSync(50); });
-  $('#selPl').addEventListener('change', e => { S.cur = e.target.value; lsSet('rc_cur', S.cur); renderAll(); });
-  const nueva = async () => { const p = blankPlanilla(); await savePl(p); S.cur = p.id; renderAll(); setTab('registro'); toast('Planilla del ' + fmtD(p.fecha) + ' creada'); };
+  $('#selPl').addEventListener('change', e => { const id = e.target.value; if (!id) return; const p = S.pl.get(id); S.cur = id; verHist = p && p.fecha !== today() ? id : null; lsSet('rc_cur', S.cur); renderAll(); });
+  const nueva = async () => {
+    // primera planilla de una fecha nueva: pedir el auditor para iniciar el día
+    const nuevoDia = !activas().some(x => x.fecha === today());
+    let aud = null;
+    if (nuevoDia) { aud = await pedirAuditor(today()); if (!aud) return; }
+    const p = blankPlanilla();
+    if (aud) { p.auditor = aud; S.aud = aud; lsSet('rc_aud', S.aud); }
+    await savePl(p); S.cur = p.id; verHist = null; renderAll(); setTab('registro');
+    toast(nuevoDia ? 'Día iniciado: planilla del ' + fmtD(p.fecha) + ' · auditor ' + p.auditor.nombre : 'Planilla del ' + fmtD(p.fecha) + ' creada');
+  };
   $('#btnNuevaPl').addEventListener('click', nueva); $('#btnPrimera').addEventListener('click', nueva);
   const bindPl = (id, set) => $(id).addEventListener('input', e => { const p = curPl(); if (!p) return; set(p, e.target.value); p.actualizado = Date.now(); p._dirty = true; saveCurDeb(); if (id === '#plFecha' || id === '#plAudNom') { const o = $('#selPl').selectedOptions[0]; if (o) o.textContent = plLabel(p); } if (id === '#plSede') renderHeader(); });
   bindPl('#plFecha', (p, v) => p.fecha = v); bindPl('#plSede', (p, v) => p.sede = v);
