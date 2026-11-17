@@ -680,13 +680,19 @@ function isoWeek(iso){
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 function toast(msg, ms=2600){ const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, ms); }
 // Ventana para iniciar un día nuevo: el nombre del auditor es obligatorio
-function pedirAuditor(fecha){
+function pedirAuditor(fecha, vieja){
   return new Promise(res => {
     const box = $('#audBox'), nom = $('#audNom'), sap = $('#audSap'), err = $('#audErr');
     const prev = new Map(); for (const p of activas()) { const n = (p.auditor && p.auditor.nombre || '').trim(); if (n && !prev.has(n.toLowerCase())) prev.set(n.toLowerCase(), {nombre: n, sap: p.auditor.sap || ''}); }
     $('#dlAuditores').innerHTML = [...prev.values()].map(a => '<option value="' + esc(a.nombre) + '">').join('');
-    $('#audMsg').textContent = 'Es la primera planilla del ' + (diaTxt(fecha) ? diaTxt(fecha) + ' ' : '') + fmtD(fecha) + '. Escribe quién hace las conferencias hoy para iniciar el día.';
-    nom.value = S.aud.nombre || ''; sap.value = S.aud.sap || ''; err.hidden = true; box.hidden = false;
+    const dia = (diaTxt(fecha) ? diaTxt(fecha) + ' ' : '') + fmtD(fecha);
+    $('#audTit').textContent = vieja ? 'Planilla sin auditor' : 'Nuevo día de conferencias';
+    $('#audMsg').textContent = vieja ? 'La planilla del ' + dia + ' no tiene auditor. Escribe quién hizo esas conferencias para poder abrirla.' : 'Es la primera planilla del ' + dia + '. Escribe quién hace las conferencias hoy para iniciar el día.';
+    $('#audYes').textContent = vieja ? 'Guardar y abrir' : 'Iniciar el día';
+    err.textContent = vieja ? 'Escribe el nombre del auditor para abrir la planilla.' : 'Escribe el nombre del auditor para iniciar el día.';
+    const yo = (quienEsta().persona || '').trim();   // persona invitada que está usando la app
+    nom.value = yo || S.aud.nombre || ''; const pa = prev.get(nom.value.trim().toLowerCase());
+    sap.value = pa ? pa.sap : (nom.value && nom.value === S.aud.nombre ? S.aud.sap || '' : ''); err.hidden = true; box.hidden = false;
     setTimeout(() => { nom.focus(); nom.select(); }, 30);
     let sapAuto = sap.value;   // el SAP se ajusta solo al auditor elegido, salvo que lo escriban a mano
     sap.oninput = () => { sapAuto = null; };
@@ -1321,11 +1327,28 @@ async function eliminarConferencia(pid, fid){
   toast('Conferencia eliminada');
   return true;
 }
-function abrirConferencia(pid, fid){
+async function abrirConferencia(pid, fid){
   if (!S.pl.has(pid)) return;
-  if (S.cur !== pid) { S.cur = pid; lsSet('rc_cur', pid); renderAll(); }
+  if (S.cur !== pid && !(await abrirPlanilla(pid))) return;
   if (tab !== 'registro') setTab('registro');
   openEditor(fid);
+}
+// Quién está usando la app: Luis (administrador) entra a todo; los demás deben poner el auditor
+// antes de abrir una planilla de un día pasado que no lo tenga.
+const quienEsta = () => { try { return (window.entorno && window.entorno.estado && window.entorno.estado()) || {}; } catch { return {}; } };
+const esAdmin = () => !!quienEsta().luis;
+const sinAuditor = p => !((p && p.auditor && p.auditor.nombre) || '').trim();
+async function abrirPlanilla(id){
+  const p = S.pl.get(id); if (!p || p._deleted) return false;
+  if (p.fecha !== today() && sinAuditor(p) && !esAdmin()) {
+    const aud = await pedirAuditor(p.fecha, true);
+    if (!aud) { renderRegistro(); return false; }
+    p.auditor = {nombre: aud.nombre, sap: aud.sap}; p.actualizado = Date.now(); p._dirty = true;
+    await savePl(p);
+    toast('Auditor guardado en la planilla del ' + fmtD(p.fecha));
+  }
+  S.cur = id; verHist = p.fecha !== today() ? id : null; lsSet('rc_cur', S.cur); renderAll();
+  return true;
 }
 function renderListas(){
   const ops = new Set(S.listas.recibidores), provs = new Set(S.listas.proveedores), desc = new Set();
@@ -2389,7 +2412,7 @@ function bind(){
   $$('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
   window.addEventListener('hashchange', () => { const t = location.hash.slice(1); if (['registro','tablero','imprimir','ajustes'].includes(t) && t !== tab) setTab(t); });
   $('#syncChip').addEventListener('click', () => { setTab('ajustes'); scheduleSync(50); });
-  $('#selPl').addEventListener('change', e => { const id = e.target.value; if (!id) return; const p = S.pl.get(id); S.cur = id; verHist = p && p.fecha !== today() ? id : null; lsSet('rc_cur', S.cur); renderAll(); });
+  $('#selPl').addEventListener('change', e => { const id = e.target.value; if (!id) return; abrirPlanilla(id); });
   const nueva = async () => {
     // primera planilla de una fecha nueva: pedir el auditor para iniciar el día
     const nuevoDia = !activas().some(x => x.fecha === today());
@@ -2561,8 +2584,8 @@ function bind(){
   // tablero
   ['#tbSem', '#tbOp', '#tbProv'].forEach(id => $(id).addEventListener('change', renderTablero));
   $('#tbCrit').addEventListener('click', e => { const tr = e.target.closest('tr[data-cat]'); if (tr) { S.tCat = tr.dataset.cat; renderTablero(); window.scrollTo({top: 0, behavior: 'smooth'}); } });
-  $('#tbHist').addEventListener('click', e => { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = verHist = tr.dataset.pl; renderAll(); setTab('registro'); } });
-  $('#tbHist').addEventListener('keydown', e => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-pl]'); if (tr) { S.cur = verHist = tr.dataset.pl; renderAll(); setTab('registro'); } } });
+  $('#tbHist').addEventListener('click', async e => { const tr = e.target.closest('tr[data-pl]'); if (tr && await abrirPlanilla(tr.dataset.pl)) setTab('registro'); });
+  $('#tbHist').addEventListener('keydown', async e => { if (e.key === 'Enter') { const tr = e.target.closest('tr[data-pl]'); if (tr && await abrirPlanilla(tr.dataset.pl)) setTab('registro'); } });
   // Si cambia el día con la app abierta, Registro pasa solo a las planillas del nuevo día
   let diaVisto = today();
   const revisarDia = () => { if (today() !== diaVisto) { diaVisto = today(); verHist = null; renderAll(); } };
