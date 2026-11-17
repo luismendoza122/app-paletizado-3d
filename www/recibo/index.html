@@ -294,6 +294,11 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .drvTxt.ok{color:var(--ok)}
 .drvLink{display:flex;gap:8px;align-items:center}
 .drvLink input{flex:1;min-width:0;font:inherit;font-size:13px;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;background:var(--surface-2);color:var(--ink-2)}
+.drvLinks{margin:10px 0;display:grid;gap:6px}
+.drvLinks .lk{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px}
+.drvLinks .lk span{min-width:0}
+.drvLinks .lk small{display:block;color:var(--muted);font-size:12px}
+.drvLinks .lk .acc{display:flex;gap:6px;flex:none}
 .drvAuto{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}
 .drvAuto input{width:20px;height:20px;flex:none;margin-top:1px;accent-color:var(--accent)}
 
@@ -411,6 +416,16 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
       <p class="note exRes" id="exRes"></p>
       <div class="actions"><button type="button" class="btn primary" id="exXls">Descargar Excel</button><button type="button" class="btn" id="exPdf">Descargar PDF</button></div>
     </section>
+    <section class="card" id="ppCard">
+      <div class="rowh"><h2>Planillas para imprimir</h2></div>
+      <p class="note" style="margin-top:0">Descarga en <b>un solo PDF</b> las planillas en formato físico de las fechas que escojas, listas para imprimir. Cada planilla sale con sus conferencias y las firmas de auditor y coordinador.</p>
+      <div class="exAtajos" id="ppAtajos"><button type="button" class="btn sm" data-r="hoy">Hoy</button><button type="button" class="btn sm" data-r="ayer">Ayer</button><button type="button" class="btn sm" data-r="sem">Esta semana</button><button type="button" class="btn sm" data-r="semAnt">Semana pasada</button><button type="button" class="btn sm" data-r="mes">Este mes</button></div>
+      <div class="g2"><label class="fld"><span>Desde</span><input type="date" id="ppDesde"></label><label class="fld"><span>Hasta</span><input type="date" id="ppHasta"></label></div>
+      <div class="tbl exTabla" id="ppLista"></div>
+      <label class="drvAuto" style="margin-top:8px"><input type="checkbox" id="ppFotos"> Incluir las fotos de evidencia (van después de cada planilla)</label>
+      <p class="note exRes" id="ppRes"></p>
+      <div class="actions"><button type="button" class="btn primary" id="ppPdf">Descargar PDF para imprimir</button></div>
+    </section>
     <section class="card" id="drvCard">
       <div class="rowh"><h2>Google Drive</h2></div>
       <p class="note" style="margin:0">La carpeta <b>Seguimiento de Recibo</b> de Drive tiene: el <b>Historial completo</b> (se actualiza una vez al día o a mano), la carpeta <b>Planillas (formato físico)</b> con el PDF de cada planilla y su fecha, la carpeta <b>Semanas</b> con un Excel por semana y la carpeta <b>Fotos</b>, donde cada foto se sube una sola vez. Quien tenga el enlace abre y descarga lo que necesite.</p>
@@ -421,6 +436,7 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
         <a class="btn" id="drvWa" target="_blank" rel="noopener">Enviar por WhatsApp</a>
       </div>
       <div class="drvLink"><input id="drvLinkIn" readonly value="https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0" aria-label="Enlace de la carpeta"><button type="button" class="btn sm" id="drvCopiar">Copiar enlace</button></div>
+      <div class="drvLinks" id="drvLinks"></div>
       <label class="drvAuto"><input type="checkbox" id="drvAuto"> Actualizar Drive solo, desde este equipo, 2 minutos después de cada cambio</label>
     </section>
     <div class="kpis" id="kpis"></div>
@@ -1442,7 +1458,7 @@ function renderTablero(){
   chartSemanas(base, fs);
   chartCriterios(rows);
   tablaOps(rows); tablaProvs(rows); tablaHist(fs);
-  renderExport();
+  renderExport(); renderPP();
 }
 function filasTablero(){
   const fs = $('#tbSem').value;
@@ -1814,10 +1830,13 @@ async function preguntarEvidencias(pl){
   if (!n) return false;
   return ask('La planilla tiene ' + n + (n === 1 ? ' foto' : ' fotos') + ' de evidencia. ¿Quieres incluirlas en el PDF? Van en páginas al final, después del formato.', 'Sí, con evidencias', 'No, solo la planilla');
 }
-async function pdfPlanilla(pl, conEvid){
+async function pdfPlanilla(pl, conEvid, docIn){   // docIn: true = devuelve el documento para seguir agregando; un documento = agrega esta planilla en páginas nuevas
   await lib('pdf');
   const {jsPDF} = window.jspdf;
-  const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'letter'});
+  const sigue = docIn && docIn !== true;
+  const doc = sigue ? docIn : new jsPDF({orientation:'landscape', unit:'mm', format:'letter'});
+  if (sigue) doc.addPage();
+  const pag0 = doc.internal.getNumberOfPages() - 1;   // la numeración empieza en 1 en cada planilla
   const W = 279.4, H = 215.9, M = 8;
   const refs = conEvid ? evidRefs(pl) : new Map();
   const rows = pl ? filasDe(pl) : Array.from({length: S.cfg.filas}, () => null);
@@ -1846,7 +1865,7 @@ async function pdfPlanilla(pl, conEvid){
     didDrawPage: () => {
       encabezado();
       doc.setFontSize(7.5); doc.setTextColor(110);
-      doc.text('Página ' + doc.internal.getNumberOfPages(), W - M, H - 5, {align:'right'});
+      doc.text('Página ' + (doc.internal.getNumberOfPages() - pag0), W - M, H - 5, {align:'right'});
       doc.setTextColor(17);
     }
   });
@@ -1895,7 +1914,56 @@ async function pdfPlanilla(pl, conEvid){
       }
     }
   }
-  return doc.output('blob');
+  return docIn ? doc : doc.output('blob');
+}
+
+// ---------- Tablero → Planillas para imprimir: varias planillas por fechas en un solo PDF ----------
+const PP = {desde: '', hasta: '', quitar: new Set()};
+const isoDe = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+function ppRango(r){
+  const d = new Date(); d.setHours(12, 0, 0, 0);
+  const lunes = x => { const y = new Date(x); y.setDate(y.getDate() - ((y.getDay() + 6) % 7)); return y; };
+  if (r === 'hoy') return [isoDe(d), isoDe(d)];
+  if (r === 'ayer') { d.setDate(d.getDate() - 1); return [isoDe(d), isoDe(d)]; }
+  if (r === 'sem') { const l = lunes(d), f = new Date(l); f.setDate(f.getDate() + 6); return [isoDe(l), isoDe(f)]; }
+  if (r === 'semAnt') { const l = lunes(d); l.setDate(l.getDate() - 7); const f = new Date(l); f.setDate(f.getDate() + 6); return [isoDe(l), isoDe(f)]; }
+  if (r === 'mes') { const i = new Date(d.getFullYear(), d.getMonth(), 1), f = new Date(d.getFullYear(), d.getMonth() + 1, 0); return [isoDe(i), isoDe(f)]; }
+  return [today(), today()];
+}
+function ppPlanillas(){
+  const a = PP.desde || today(), b = PP.hasta || a, [ini, fin] = a <= b ? [a, b] : [b, a];
+  return activas().filter(p => p.fecha && p.fecha >= ini && p.fecha <= fin && filasDe(p).length)
+    .sort((x, y) => x.fecha.localeCompare(y.fecha) || (x.creado || 0) - (y.creado || 0));
+}
+function renderPP(){
+  if (!$('#ppCard')) return;
+  if (!PP.desde) [PP.desde, PP.hasta] = ppRango('hoy');
+  $('#ppDesde').value = PP.desde; $('#ppHasta').value = PP.hasta;
+  const lista = ppPlanillas();
+  $('#ppLista').innerHTML = lista.length
+    ? '<table class="t"><thead><tr><th class="ck"><span class="vh">Imprimir</span></th><th>Fecha</th><th>Auditor</th><th>Conferencias</th><th>Fotos</th></tr></thead><tbody>' +
+      lista.map(p => { const on = !PP.quitar.has(p.id), fs = filasDe(p), nf = fs.reduce((t, f) => t + (f.fotos || []).length, 0);
+        return '<tr class="click' + (on ? ' on' : '') + '" data-id="' + esc(p.id) + '"><td class="ck"><input type="checkbox" aria-label="Imprimir planilla" ' + (on ? 'checked' : '') + ' tabindex="-1"></td><td>' + esc(fmtD(p.fecha)) + '</td><td>' + esc((p.auditor && p.auditor.nombre || '').trim() || 'Sin auditor') + '</td><td>' + fs.length + '</td><td>' + nf + '</td></tr>'; }).join('') + '</tbody></table>'
+    : '<p class="note" style="padding:10px">No hay planillas con conferencias entre esas fechas.</p>';
+  const sel = lista.filter(p => !PP.quitar.has(p.id)), nc = sel.reduce((t, p) => t + filasDe(p).length, 0);
+  $('#ppRes').textContent = sel.length ? 'Se imprimen ' + sel.length + (sel.length === 1 ? ' planilla' : ' planillas') + ' con ' + nc + (nc === 1 ? ' conferencia' : ' conferencias') + '.' : (lista.length ? 'Marca al menos una planilla.' : '');
+  $('#ppPdf').disabled = !sel.length;
+}
+function initPP(){
+  if (!$('#ppCard')) return;
+  $('#ppAtajos').addEventListener('click', e => { const b = e.target.closest('button[data-r]'); if (!b) return; [PP.desde, PP.hasta] = ppRango(b.dataset.r); PP.quitar.clear(); renderPP(); });
+  $('#ppDesde').addEventListener('change', e => { PP.desde = e.target.value || today(); if (!PP.hasta || PP.hasta < PP.desde) PP.hasta = PP.desde; PP.quitar.clear(); renderPP(); });
+  $('#ppHasta').addEventListener('change', e => { PP.hasta = e.target.value || PP.desde; PP.quitar.clear(); renderPP(); });
+  $('#ppLista').addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (!tr) return; const id = tr.dataset.id; PP.quitar.has(id) ? PP.quitar.delete(id) : PP.quitar.add(id); renderPP(); });
+  $('#ppPdf').addEventListener('click', e => conCarga(e.currentTarget, async () => {
+    const sel = ppPlanillas().filter(p => !PP.quitar.has(p.id)); if (!sel.length) throw new Error('No hay planillas para imprimir.');
+    const fotos = $('#ppFotos').checked;
+    let doc = true;
+    for (const p of sel) doc = await pdfPlanilla(p, fotos, doc);
+    const f0 = sel[0].fecha, f1 = sel[sel.length - 1].fecha;
+    await guardar('Planillas ' + (f0 === f1 ? f0 : f0 + ' al ' + f1) + (fotos ? ' con evidencias' : '') + '.pdf', doc.output('blob'));
+  }));
+  renderPP();
 }
 
 // Excel de una planilla, con fotos
@@ -2710,7 +2778,19 @@ function renderDrive(){
   t.textContent = txt; t.className = 'drvTxt' + (tipo ? ' ' + tipo : '');
   $('#drvSubir').disabled = DV.busy || !DV.mcp;
   $('#drvAuto').checked = DV.auto; $('#drvAuto').disabled = !DV.mcp;
-  $('#drvWa').href = 'https://wa.me/?text=' + encodeURIComponent('Seguimiento de Recibo – conferencias de recibo actualizadas. En la carpeta están el historial completo, un Excel por semana y las fotos: ' + DRIVE.link);
+  // enlaces para el equipo: siempre de CARPETAS. Cada archivo se reemplaza al actualizar y su enlace cambia; el de la carpeta no.
+  const L = driveLinks();
+  $('#drvLinks').innerHTML = '<p class="note" style="margin:0">Comparte con el equipo estos enlaces de carpeta: no cambian aunque los archivos se actualicen.</p>' +
+    L.map((x, i) => '<div class="lk"><span><b>' + esc(x.t) + '</b><small>' + esc(x.d) + '</small></span><span class="acc"><a class="btn sm" href="' + esc(x.url) + '" target="_blank" rel="noopener">Abrir</a><button type="button" class="btn sm" data-lk="' + i + '">Copiar</button></span></div>').join('');
+  $('#drvWa').href = 'https://wa.me/?text=' + encodeURIComponent('Seguimiento de Recibo – conferencias de recibo actualizadas (' + horaTxt(Date.now()) + ').\n' + L.map(x => '• ' + x.t + ': ' + x.url).join('\n'));
+}
+function driveLinks(){
+  const inf = DV.info || {}, carpeta = id => 'https://drive.google.com/drive/folders/' + id;
+  const L = [{t: 'Carpeta Seguimiento de Recibo', d: 'Historial completo (Excel) y todas las subcarpetas', url: DRIVE.link}];
+  if (inf.planillasId) L.push({t: 'Planillas (formato físico)', d: 'Un PDF por planilla, con su fecha, para imprimir', url: carpeta(inf.planillasId)});
+  if (inf.semanasId) L.push({t: 'Semanas', d: 'Un Excel por semana', url: carpeta(inf.semanasId)});
+  if (inf.fotosId) L.push({t: 'Fotos', d: 'Evidencias por semana', url: carpeta(inf.fotosId)});
+  return L;
 }
 function driveProgramar(ms){
   if (!DV.auto || !DV.mcp) return;
@@ -2740,10 +2820,10 @@ async function xlsParaDrive(rows, meta){
   throw {code: 'muy_grande'};
 }
 // deja en la carpeta solo el archivo nuevo de ese grupo; los anteriores van a la papelera
-async function dLimpiar(parentId, nuevoId, coincide){
+async function dLimpiar(parentId, nuevoId, coincide, conservar){   // conservar: ids que no se tocan
   try {
     const r = await dcall('search_files', {query: "parentId = '" + parentId + "' and trashed = false", excludeContentSnippets: true, pageSize: 100});
-    for (const f of (r.files || [])) if (f && f.id && f.id !== nuevoId && f.mimeType !== FOLDER_MIME && coincide(f.title || '')) { try { await dcall('trash_file', {fileId: f.id}); } catch {} }
+    for (const f of (r.files || [])) if (f && f.id && f.id !== nuevoId && !(conservar && conservar.has(f.id)) && f.mimeType !== FOLDER_MIME && coincide(f.title || '')) { try { await dcall('trash_file', {fileId: f.id}); } catch {} }
   } catch {}
 }
 // Sube este número cuando cambie el formato (encabezados, columnas) para rehacer en Drive los archivos ya subidos
@@ -2815,6 +2895,9 @@ async function subirDrive(manual){
       await dGuardarInfo(); hechos++;
       if (prev && prev.fileId && prev.fileId !== f.id) { try { await dcall('trash_file', {fileId: prev.fileId}); } catch {} }
     }
+    // 3c) quitar de la carpeta de planillas los PDF que ya no corresponden a ninguna planilla vigente
+    const vigentes = new Set(activas().map(p => info.planillas[p.id] && info.planillas[p.id].fileId).filter(Boolean));
+    if (manual || rehacer || !info.limpiezaPl) { paso('Revisando la carpeta de planillas…'); await dLimpiar(info.planillasId, null, t => /\.pdf$/i.test(t), vigentes); info.limpiezaPl = Date.now(); await dGuardarInfo(); }
     // 4) historial completo: una vez al día (al primer cambio del día) o cuando se pide a mano
     const h = info.hist;
     if (manual || rehacer || !h || !h.fileId || (h.dia !== today() && ultimoCambio() > (h.subido || 0))) {
@@ -2857,6 +2940,11 @@ function bindDrive(){
     catch { inp.focus(); inp.select(); try { document.execCommand('copy'); toast('Enlace copiado'); } catch { toast('Mantén presionado el enlace para copiarlo'); } }
   });
   $('#drvLinkIn').addEventListener('focus', e => e.target.select());
+  $('#drvLinks').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-lk]'); if (!b) return;
+    const x = driveLinks()[+b.dataset.lk]; if (!x) return;
+    try { await navigator.clipboard.writeText(x.url); toast('Enlace copiado: ' + x.t); } catch { prompt('Copia el enlace:', x.url); }
+  });
   renderDrive();
 }
 
@@ -2886,7 +2974,7 @@ async function start(){
   bind();
   initCombos();
   initCam();
-  initExport();
+  initExport(); initPP();
   bindDrive();
   initNotas();
   const ok = await IDB.open();
