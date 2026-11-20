@@ -483,16 +483,20 @@ function mapaDeFotos() {
   if (carpetas.hasNext()) recorrerFotos(carpetas.next(), '', mapa, 0);
 
   const texto = JSON.stringify(mapa);
-  if (texto.length < 100000) cache.put('mapa_fotos', texto, 21600); // 6 horas
+  if (texto.length < 90000) cache.put('mapa_fotos', texto, 21600); // 6 horas (tope de la cache: 100 KB)
   return mapa;
 }
+
+// El nombre real es "2026-11-10 - DIANA - ARROZ COSTAL - SAP 1332 - 1dociy.jpg":
+// el guion y el sufijo llevan un espacio en medio.
+const SUFIJO_FOTO = /-\s*([A-Za-z0-9]{6})\.(?:jpe?g|png|webp)$/i;
 
 function recorrerFotos(carpeta, semana, mapa, nivel) {
   if (nivel > 3) return;
   const archivos = carpeta.getFiles();
   while (archivos.hasNext()) {
     const f = archivos.next();
-    const m = f.getName().match(/-([A-Za-z0-9]{6})\.jpe?g$/i);
+    const m = f.getName().match(SUFIJO_FOTO);
     if (m) mapa[m[1].toUpperCase()] = { id: f.getId(), sem: semana };
   }
   const subs = carpeta.getFolders();
@@ -509,16 +513,39 @@ function archivoPorSufijo(id) {
   try { return DriveApp.getFileById(dato.id); } catch (x) { return null; }
 }
 
+// Ejecutar antes de importar: dice cuántas fotos hay en Drive y si sus nombres
+// sirven para enlazarlas. No toca nada.
+function revisarFotos() {
+  const mapa = mapaDeFotos();
+  const claves = Object.keys(mapa);
+  if (!claves.length) return 'No encontré fotos con el nombre esperado (terminadas en "- ABC123.jpg") dentro de Seguimiento de Recibo/Fotos.';
+
+  const semanas = {};
+  for (let i = 0; i < claves.length; i++) {
+    const s = mapa[claves[i]].sem || '(sin semana)';
+    semanas[s] = (semanas[s] || 0) + 1;
+  }
+  const detalle = Object.keys(semanas).sort().map(function (s) { return '  ' + s + ': ' + semanas[s]; }).join('\n');
+  return 'Fotos reconocidas: ' + claves.length + '\n' + detalle;
+}
+
 // Ejecutar una vez después de importar las planillas: vuelve a enlazar cada
 // foto con el archivo que ya está en Drive. Así no se suben dos veces.
 function indexarFotos() {
   const mapa = mapaDeFotos();
+  if (!Object.keys(mapa).length) return 'Primero revisa la carpeta: no hay fotos con el nombre esperado. Corre revisarFotos().';
+
   const { filas } = leerDocs();
   const fids = {};
   for (let i = 0; i < filas.length; i++) {
     const d = filaADoc(filas[i]);
     if (!d || d.coleccion !== 'planillas' || !d.datos || !d.datos.fotos) continue;
     for (const fid of Object.keys(d.datos.fotos)) fids[fid] = true;
+  }
+
+  if (!Object.keys(fids).length) {
+    return 'Hay ' + Object.keys(mapa).length + ' fotos en Drive, pero todavía no hay planillas importadas: ' +
+      'las fotos se enlazan solas cuando se muestren (o vuelve a correr esto después de importarDesdeDrive).';
   }
 
   const h = hoja('docs', CAB_DOCS);

@@ -89,13 +89,26 @@ referencia.
 
 Las fotos que la app subió al informe semanal ya están en
 `Seguimiento de Recibo/Fotos/<semana>/` y se llaman
-`fecha - proveedor - descripción - A1B2C3.jpg`. Esos **6 últimos caracteres
-son el final del id de la foto**, así que se pueden volver a enlazar sin
-subir nada:
+`fecha - proveedor - descripción - 1dociy.jpg`. Esos **6 últimos caracteres
+son el final del id de la foto** (la app las nombra con `fid.slice(-6)`), así
+que se pueden volver a enlazar sin subir nada.
 
-1. En Apps Script ejecuta **`indexarFotos()`**.
-2. Debe responder algo como
-   `Fotos enlazadas: 412. Sin archivo en Drive: 0.`
+Revisión hecha el 19/11/2026 sobre la carpeta real:
+
+| | |
+|---|---|
+| Fotos en Drive | **71** |
+| Semanas | S46 (09–15 nov, 42 fotos) y S47 (16–22 nov, 29 fotos) |
+| Artículos distintos | 35 (de 1 a 5 fotos cada uno) |
+| Nombres con el sufijo esperado | **71 de 71** |
+| Sufijos repetidos | ninguno |
+
+Pasos:
+
+1. En Apps Script ejecuta **`revisarFotos()`** (no toca nada). Debe responder
+   `Fotos reconocidas: 71` con el detalle por semana.
+2. Después de importar las planillas, ejecuta **`indexarFotos()`**. Debe
+   responder `Fotos enlazadas: 71. Sin archivo en Drive: 0.`
 
 Con eso:
 
@@ -103,9 +116,14 @@ Con eso:
 - el informe semanal no las sube otra vez (no se duplican);
 - no hace falta sacar las fotos de Supabase.
 
-Si responde "Sin archivo en Drive: N", esas N fotos nunca llegaron a Drive:
-quedaron solo en la base. Se pueden traer con el respaldo cuando la API
-vuelva a responder, o quedarse así (las nuevas ya van directo a Drive).
+Si `indexarFotos()` responde "Sin archivo en Drive: N", esas N fotos nunca
+llegaron a Drive: quedaron solo en la base. Se pueden traer con el respaldo
+cuando la API vuelva a responder, o quedarse así (las nuevas ya van directo a
+Drive).
+
+Las fotos se enlazan también **solas** cuando alguien abre una planilla vieja:
+la app pide la foto, la nube la busca por su sufijo en `Fotos/**` y guarda la
+referencia. `indexarFotos()` solo lo hace de una vez y por adelantado.
 
 ### 8. Probar
 
