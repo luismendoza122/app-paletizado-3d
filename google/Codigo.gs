@@ -256,6 +256,35 @@ function accion(b) {
     }
   }
 
+  // Fotos que ya estaban en Drive antes de la mudanza: se buscan por el
+  // final del nombre (la app las nombra "... - A1B2C3.jpg").
+  if (nombre === 'buscar_foto') {
+    const referencia = buscarDoc('drivefotos', id);
+    if (referencia) {
+      const d = filaADoc(referencia);
+      if (d && d.datos && d.datos.id) {
+        try { return { existe: true, base64: Utilities.base64Encode(DriveApp.getFileById(d.datos.id).getBlob().getBytes()), tipo: 'image/jpeg' }; }
+        catch (x) { /* el archivo ya no está: se busca abajo */ }
+      }
+    }
+    const archivo = archivoPorSufijo(id);
+    if (!archivo) return { existe: false };
+    try {
+      const blob = archivo.getBlob();
+      const rec = { id: archivo.getId(), url: archivo.getUrl(), sem: '' };
+      conCandado(function () {
+        const fila = buscarDoc('drivefotos', id);
+        const version = (fila ? Number(fila[2]) || 0 : 0) + 1;
+        const registro = armarFilaDoc({ coleccion: 'drivefotos', id: id, datos: rec, version: version, borrado: false, actualizado_por: 'indice', actualizado_en: new Date().toISOString() });
+        if (fila) hoja('docs', CAB_DOCS).getRange(fila.__fila, 1, 1, CAB_DOCS.length).setValues([registro]);
+        else hoja('docs', CAB_DOCS).appendRow(registro);
+      });
+      return { existe: true, base64: Utilities.base64Encode(blob.getBytes()), tipo: blob.getContentType() || 'image/jpeg' };
+    } catch (x) {
+      return { existe: false };
+    }
+  }
+
   if (nombre === 'borrar_foto') {
     const fila = buscarDoc('fotos', id);
     if (!fila) return { ok: true };
@@ -439,6 +468,85 @@ function carpetaFotos() {
 }
 
 // ---------------------------------------------------------------------
+//  Fotos que ya estaban en Drive (antes de la mudanza)
+//  La app las nombra "fecha - proveedor - descripcion - A1B2C3.jpg":
+//  los últimos 6 caracteres son el final del id de la foto.
+// ---------------------------------------------------------------------
+function mapaDeFotos() {
+  const cache = CacheService.getScriptCache();
+  const guardado = cache.get('mapa_fotos');
+  if (guardado) { try { return JSON.parse(guardado); } catch (x) { /* se rehace */ } }
+
+  const mapa = {};
+  const raiz = DriveApp.getFolderById(RAIZ);
+  const carpetas = raiz.getFoldersByName('Fotos');
+  if (carpetas.hasNext()) recorrerFotos(carpetas.next(), '', mapa, 0);
+
+  const texto = JSON.stringify(mapa);
+  if (texto.length < 100000) cache.put('mapa_fotos', texto, 21600); // 6 horas
+  return mapa;
+}
+
+function recorrerFotos(carpeta, semana, mapa, nivel) {
+  if (nivel > 3) return;
+  const archivos = carpeta.getFiles();
+  while (archivos.hasNext()) {
+    const f = archivos.next();
+    const m = f.getName().match(/-([A-Za-z0-9]{6})\.jpe?g$/i);
+    if (m) mapa[m[1].toUpperCase()] = { id: f.getId(), sem: semana };
+  }
+  const subs = carpeta.getFolders();
+  while (subs.hasNext()) {
+    const s = subs.next();
+    recorrerFotos(s, nivel === 0 ? s.getName() : semana, mapa, nivel + 1);
+  }
+}
+
+function archivoPorSufijo(id) {
+  const mapa = mapaDeFotos();
+  const dato = mapa[String(id).slice(-6).toUpperCase()];
+  if (!dato) return null;
+  try { return DriveApp.getFileById(dato.id); } catch (x) { return null; }
+}
+
+// Ejecutar una vez después de importar las planillas: vuelve a enlazar cada
+// foto con el archivo que ya está en Drive. Así no se suben dos veces.
+function indexarFotos() {
+  const mapa = mapaDeFotos();
+  const { filas } = leerDocs();
+  const fids = {};
+  for (let i = 0; i < filas.length; i++) {
+    const d = filaADoc(filas[i]);
+    if (!d || d.coleccion !== 'planillas' || !d.datos || !d.datos.fotos) continue;
+    for (const fid of Object.keys(d.datos.fotos)) fids[fid] = true;
+  }
+
+  const h = hoja('docs', CAB_DOCS);
+  const filasDocs = h.getLastRow() > 1 ? h.getRange(2, 1, h.getLastRow() - 1, CAB_DOCS.length).getValues() : [];
+  const donde = {};
+  for (let i = 0; i < filasDocs.length; i++) donde[filasDocs[i][0] + '/' + filasDocs[i][1]] = i + 2;
+
+  const nuevos = [];
+  let enlazadas = 0, sinArchivo = 0;
+  for (const fid of Object.keys(fids)) {
+    const dato = mapa[fid.slice(-6).toUpperCase()];
+    if (!dato) { sinArchivo++; continue; }
+    const rec = { id: dato.id, url: 'https://drive.google.com/file/d/' + dato.id + '/view', sem: dato.sem || '' };
+    const fila = armarFilaDoc({ coleccion: 'drivefotos', id: fid, datos: rec, version: 1, borrado: false, actualizado_por: 'indice', actualizado_en: new Date().toISOString() });
+    const clave = 'drivefotos/' + fid;
+    if (donde[clave]) h.getRange(donde[clave], 1, 1, CAB_DOCS.length).setValues([fila]);
+    else { nuevos.push(fila); donde[clave] = -1; }
+    enlazadas++;
+  }
+  for (let i = 0; i < nuevos.length; i += 200) {
+    h.getRange(h.getLastRow() + 1, 1, Math.min(200, nuevos.length - i), CAB_DOCS.length).setValues(nuevos.slice(i, i + 200));
+  }
+
+  subirContador();
+  return 'Fotos enlazadas: ' + enlazadas + '. Sin archivo en Drive: ' + sinArchivo + '. Carpetas revisadas: ' + Object.keys(mapa).length + ' fotos.';
+}
+
+// ---------------------------------------------------------------------
 //  Hojas: lectura y escritura
 // ---------------------------------------------------------------------
 const _hojas = {};
@@ -598,9 +706,14 @@ function importarDesdeDrive(nombre) {
     let datosDoc = d.datos || {};
 
     if (d.coleccion === 'fotos' && datosDoc.data) {
-      const base64 = String(datosDoc.data).split(',').pop();
-      const archivo = carpetaFotos().createFile(Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg', d.id + '.jpg'));
-      datosDoc = { pid: datosDoc.pid || null, fileId: archivo.getId() };
+      // Si la foto ya está en Drive (misma terminación del nombre), no se duplica.
+      const ya = archivoPorSufijo(d.id);
+      let fileId = ya ? ya.getId() : '';
+      if (!fileId) {
+        const base64 = String(datosDoc.data).split(',').pop();
+        fileId = carpetaFotos().createFile(Utilities.newBlob(Utilities.base64Decode(base64), 'image/jpeg', d.id + '.jpg')).getId();
+      }
+      datosDoc = { pid: datosDoc.pid || null, fileId: fileId };
       fotos++;
     }
 

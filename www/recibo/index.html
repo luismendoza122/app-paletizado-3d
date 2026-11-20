@@ -919,6 +919,9 @@ async function fotoSrc(fid, pl){
   if (rm.r === 'a' && S.assets && S.assets.download) {
     try { const u = await S.assets.download(rm.id); if (u) { urlCache.set(fid, u); return u; } } catch {}
   }
+  if (rm.r === 'd' && S.assets && S.assets.buscar) {
+    try { const u = await S.assets.buscar(rm.id); if (u) { urlCache.set(fid, u); return u; } } catch {}
+  }
   return null;
 }
 async function fotoData(fid, pl, max){

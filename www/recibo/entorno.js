@@ -326,6 +326,12 @@
       if (!r || !r.existe) return null;
       return 'data:' + (r.tipo || 'image/jpeg') + ';base64,' + r.base64;
     },
+    // Foto vieja: ya estaba en Drive antes de la mudanza y se busca por el final del nombre.
+    async buscar(id) {
+      const r = await llamarGoogle('buscar_foto', { id });
+      if (!r || !r.existe) return null;
+      return 'data:' + (r.tipo || 'image/jpeg') + ';base64,' + r.base64;
+    },
     async delete(id) { try { await llamarGoogle('borrar_foto', { id }); } catch { /* ya no está */ } },
   };
   const DRIVE_PUENTE = {

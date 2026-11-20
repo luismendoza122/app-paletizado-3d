@@ -85,7 +85,29 @@ Se puede repetir: actualiza lo que ya está y no duplica. Las fotos que vengan
 en base64 se convierten en archivos de Drive y en la hoja queda solo la
 referencia.
 
-### 7. Probar
+### 7. Si las fotos ya están en Drive
+
+Las fotos que la app subió al informe semanal ya están en
+`Seguimiento de Recibo/Fotos/<semana>/` y se llaman
+`fecha - proveedor - descripción - A1B2C3.jpg`. Esos **6 últimos caracteres
+son el final del id de la foto**, así que se pueden volver a enlazar sin
+subir nada:
+
+1. En Apps Script ejecuta **`indexarFotos()`**.
+2. Debe responder algo como
+   `Fotos enlazadas: 412. Sin archivo en Drive: 0.`
+
+Con eso:
+
+- las planillas viejas vuelven a mostrar sus fotos;
+- el informe semanal no las sube otra vez (no se duplican);
+- no hace falta sacar las fotos de Supabase.
+
+Si responde "Sin archivo en Drive: N", esas N fotos nunca llegaron a Drive:
+quedaron solo en la base. Se pueden traer con el respaldo cuando la API
+vuelva a responder, o quedarse así (las nuevas ya van directo a Drive).
+
+### 8. Probar
 
 1. Abre la página.
 2. Ajustes → **Nube del equipo** → escribe el código o inicia sesión.
