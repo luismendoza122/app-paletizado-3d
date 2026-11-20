@@ -4,12 +4,17 @@
 // Entra Luis con su cuenta de la Central, o cualquier equipo con el código de equipo que Luis crea.
 (function () {
   'use strict';
+  // Nube nueva en Google (aplicación web de Apps Script).
+  // Si aquí va la dirección .../exec, la página usa Google y deja de llamar a Supabase.
+  // Si está vacía, todo sigue funcionando como antes con Supabase.
+  const NUBE_GOOGLE = '';
   const NUBE = {
     url: 'https://nfrqrboqxcpgsagnmwqq.supabase.co',
     llave: 'sb_publishable_73XleY68KOLPlGw_DrlQsA__IQzwPB8',
   };
-  const FUNCION = NUBE.url + '/functions/v1/recibo';
-  const CADA_MS = 6000; // cada cuánto se buscan cambios de otros equipos
+  const FUNCION = NUBE_GOOGLE || (NUBE.url + '/functions/v1/recibo');
+  const CADA_MS = NUBE_GOOGLE ? 20000 : 6000; // cada cuánto se buscan cambios de otros equipos
+  let contadorGoogle = null; // sube cada vez que alguien guarda algo (solo Google)
 
   const ls = {
     get(k, d) { try { const v = localStorage.getItem('rc_nube_' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -35,6 +40,7 @@
   async function tokenVigente() {
     const s = ls.get('sesion', null);
     if (!s) return null;
+    if (NUBE_GOOGLE) return s.token || null;
     if (Date.now() < s.vence - 60000) return s.token;
     try {
       const r = await fetch(NUBE.url + '/auth/v1/token?grant_type=refresh_token', {
@@ -55,12 +61,36 @@
     return h;
   }
   async function llamar(accion, datos = {}) {
+    if (NUBE_GOOGLE) return llamarGoogle(accion, datos);
     const r = await fetch(FUNCION, { method: 'POST', headers: await cabeceras(), body: JSON.stringify({ accion, dispositivo: idDispositivo(), ...datos }) });
     const cuerpo = await r.json().catch(() => ({}));
     if (!r.ok) { const e = new Error(cuerpo.error || ('Error ' + r.status)); e.code = r.status === 401 ? 'sin_acceso' : r.status === 413 ? 'demasiado_grande' : 'error_' + r.status; throw e; }
     return cuerpo;
   }
+  // Apps Script siempre responde 200: el error viene dentro del cuerpo.
+  async function llamarGoogle(accion, datos = {}) {
+    const cuerpo = JSON.stringify({ accion, dispositivo: idDispositivo(), equipo: ls.get('equipo', ''), token: (await tokenVigente()) || '', ...datos });
+    let r;
+    // text/plain: el navegador no hace consulta previa y Google la acepta
+    try { r = await fetch(FUNCION, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo, redirect: 'follow' }); }
+    catch { const e = new Error('Sin conexión con la nube'); e.code = 'server_unavailable'; throw e; }
+    if (r.status === 429) { const e = new Error('Demasiadas consultas seguidas; espera un momento'); e.code = 'rate_limited'; throw e; }
+    const d = await r.json().catch(() => null);
+    if (!d) { const e = new Error('Respuesta inválida de la nube'); e.code = 'upstream_error'; throw e; }
+    if (d.error) {
+      const err = typeof d.error === 'string' ? { code: d.code || 'error', message: d.error } : d.error;
+      const e = new Error(err.message || 'Error de la nube');
+      e.code = err.code || 'error';
+      throw e;
+    }
+    return d;
+  }
   async function iniciarSesion(correo, clave) {
+    if (NUBE_GOOGLE) {
+      const d = await llamarGoogle('login', { correo, clave });
+      ls.set('sesion', { token: d.token, nombre: d.nombre || 'Luis', vence: Date.now() + 30 * 86400000 });
+      return;
+    }
     const r = await fetch(NUBE.url + '/auth/v1/token?grant_type=password', {
       method: 'POST', headers: { 'Content-Type': 'application/json', apikey: NUBE.llave }, body: JSON.stringify({ email: correo, password: clave }),
     });
@@ -162,6 +192,17 @@
     try {
       // 3 s de margen por si dos equipos guardan casi al mismo tiempo (los repetidos se ignoran por versión)
       const pedir = desde ? new Date(Date.parse(desde) - 3000).toISOString() : null;
+      if (NUBE_GOOGLE) {
+        // Pregunta barata: un solo número. Si no cambió, no se baja nada.
+        const p = await llamar('ping');
+        if (contadorGoogle !== null && p.v === contadorGoogle) return;
+        const r = await llamar('cambios', { desde: pedir });
+        (r.docs || []).forEach(aplicar);
+        if (r.docs && r.docs.length >= 2000) desde = r.docs[r.docs.length - 1].actualizado_en;
+        else { desde = r.ahora; contadorGoogle = p.v; }
+        guardarCopia();
+        return;
+      }
       const r = await llamar('cambios', { desde: pedir });
       (r.docs || []).forEach(aplicar);
       if (r.docs && r.docs.length >= 2000) desde = r.docs[r.docs.length - 1].actualizado_en;
@@ -261,10 +302,32 @@
   // ---------- Google Drive (puente publicado como aplicación web de Google Apps Script) ----------
   // La dirección del puente se guarda en la nube del equipo (config/puente → { url }), así se cambia sin tocar la página.
   function urlPuente() {
+    if (NUBE_GOOGLE) return NUBE_GOOGLE; // la nube de Google ya trae las herramientas de Drive
     const c = cache.get('config/puente');
     const u = c && !c.borrado && c.datos && c.datos.url;
     return typeof u === 'string' && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u) ? u : '';
   }
+  // ---------- fotos en Drive (solo Google) ----------
+  // El archivo va a la carpeta "fotos de evidencia" y en la hoja queda solo la referencia.
+  const blobABase64 = (blob) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',').pop());
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(blob);
+  });
+  const FOTOS = {
+    async upload(blob) {
+      const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+      await llamarGoogle('subir_foto', { id, base64: await blobABase64(blob) });
+      return { id };
+    },
+    async download(id) {
+      const r = await llamarGoogle('bajar_foto', { id });
+      if (!r || !r.existe) return null;
+      return 'data:' + (r.tipo || 'image/jpeg') + ';base64,' + r.base64;
+    },
+    async delete(id) { try { await llamarGoogle('borrar_foto', { id }); } catch { /* ya no está */ } },
+  };
   const DRIVE_PUENTE = {
     async callTool(_servidor, tool, input) {
       const url = urlPuente();
@@ -277,7 +340,10 @@
       if (!r.ok) throw { code: r.status === 429 ? 'rate_limited' : 'upstream_error', message: 'Google respondió ' + r.status };
       const d = await r.json().catch(() => null);
       if (!d) throw { code: 'upstream_error', message: 'Respuesta inválida de Google Drive' };
-      if (d.error) throw { code: d.error.code || 'tool_error', message: d.error.message || '' };
+      if (d.error) {
+        const err = typeof d.error === 'string' ? { code: d.code || 'tool_error', message: d.error } : d.error;
+        throw { code: err.code || 'tool_error', message: err.message || '' };
+      }
       return { payload: d.payload || {} };
     },
   };
@@ -286,6 +352,7 @@
   window.entorno = {
     async use(nombre) {
       if (nombre === 'downloads') return DESCARGAS;
+      if (nombre === 'assets') return NUBE_GOOGLE ? FOTOS : null;
       if (nombre === 'mcp') {
         const e = estado || await revisarEstado();
         if (!(e.luis || e.equipo)) return null;
@@ -346,7 +413,7 @@
         '<div class="bar"><label class="fld grow"><span>Código de equipo</span><input id="nbCodigo" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX"></label>' +
         '<button class="btn primary" id="nbUsarCodigo">Conectar</button></div>' +
         '<details><summary>Soy Luis: iniciar sesión</summary><div class="g2">' +
-        '<label class="fld"><span>Correo de la Central</span><input id="nbCorreo" type="email" autocomplete="username"></label>' +
+        '<label class="fld"><span>Correo</span><input id="nbCorreo" type="email" autocomplete="username"></label>' +
         '<label class="fld"><span>Contraseña</span><input id="nbClave" type="password" autocomplete="current-password"></label></div>' +
         '<div class="actions"><button class="btn primary" id="nbEntrar">Iniciar sesión</button></div></details>' +
         (conSesion ? '<p class="note">La sesión guardada venció; vuelve a iniciar sesión.</p>' : '');
@@ -426,7 +493,7 @@
       } catch (err) { aviso(err.message); }
     });
     on('nbQuitar', async () => { try { await llamar('quitar_codigo'); estado = await revisarEstado(); await pintarTarjeta(); aviso('Código general quitado: ahora solo entran las personas de la lista.'); } catch (err) { aviso(err.message); } });
-    on('nbSalir', () => { ls.set('sesion', null); location.reload(); });
+    on('nbSalir', async () => { try { if (NUBE_GOOGLE) await llamarGoogle('salir', {}); } catch { /* se cierra igual en este equipo */ } ls.set('sesion', null); location.reload(); });
     on('nbOlvidar', () => { ls.set('equipo', ''); ls.set('conectado', null); location.reload(); });
   }
   window.entorno.pintarNube = pintarTarjeta;

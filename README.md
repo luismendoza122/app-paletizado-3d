@@ -53,6 +53,7 @@ www/                 app (HTML, CSS, JS sin frameworks)
   js/datos/          lectura de Excel/CSV y guardado en el equipo
   js/visor.js        3D (Three.js) y vista por capas
 supabase/functions/  paletizado (posiciones y tareas) y recibo (planillas, artículos, ajustes y fotos)
+google/              nube de Google para Recibo: Apps Script + hoja de cálculo (reemplaza la función recibo de Supabase)
 scripts/             preparar.js (copia Three.js y SheetJS a www/vendor) y servidor local
 test/                pruebas del motor (npm test)
 ```
