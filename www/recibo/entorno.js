@@ -9,8 +9,8 @@
   // Si está vacía, todo sigue funcionando como antes con Supabase.
   const NUBE_GOOGLE = '';
   const NUBE = {
-    url: 'https://nfrqrboqxcpgsagnmwqq.supabase.co',
-    llave: 'sb_publishable_73XleY68KOLPlGw_DrlQsA__IQzwPB8',
+    url: 'https://rastxqzdilvodkncricw.supabase.co',
+    llave: 'sb_publishable_7ssKj4Vy_OBbY2uzDPWo3g_ZTZ1zlpn',
   };
   const FUNCION = NUBE_GOOGLE || (NUBE.url + '/functions/v1/recibo');
   const CADA_MS = NUBE_GOOGLE ? 20000 : 6000; // cada cuánto se buscan cambios de otros equipos
@@ -334,6 +334,46 @@
     },
     async delete(id) { try { await llamarGoogle('borrar_foto', { id }); } catch { /* ya no está */ } },
   };
+  // La misma idea cuando los datos viven en Supabase: la foto se guarda en la carpeta de Drive
+  // y en la base queda solo la referencia {r:'a', id}. Así la base nunca carga ni entrega imágenes.
+  const dcallDrive = async (tool, input) => {
+    const url = urlPuente();
+    if (!url) { const e = new Error('Google Drive todavía no está conectado.'); e.code = 'server_not_connected'; throw e; }
+    const cuerpo = JSON.stringify({ tool, input, equipo: ls.get('equipo', ''), token: (await tokenVigente()) || '' });
+    let r;
+    try { r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo, redirect: 'follow' }); }
+    catch { const e = new Error('Sin conexión con Google Drive'); e.code = 'server_unavailable'; throw e; }
+    if (!r.ok) { const e = new Error('Google respondió ' + r.status); e.code = r.status === 429 ? 'rate_limited' : 'upstream_error'; throw e; }
+    const d = await r.json().catch(() => null);
+    if (!d) { const e = new Error('Respuesta inválida de Google Drive'); e.code = 'upstream_error'; throw e; }
+    if (d.error) {
+      const err = typeof d.error === 'string' ? { code: d.code || 'tool_error', message: d.error } : d.error;
+      const e = new Error(err.message || 'Google Drive rechazó el archivo');
+      e.code = err.code || 'tool_error';
+      throw e;
+    }
+    return d.payload || {};
+  };
+  const FOTOS_PUENTE = {
+    async upload(blob, opciones) {
+      const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+      const fecha = (opciones && opciones.fecha) || new Date().toISOString().slice(0, 10);
+      await dcallDrive('subir_foto', { id, fecha, tipo: blob.type || 'image/jpeg', base64: await blobABase64(blob) });
+      return { id };
+    },
+    async download(id) {
+      const r = await dcallDrive('leer_foto', { id });
+      if (!r || !r.existe) return null;
+      return 'data:' + (r.tipo || 'image/jpeg') + ';base64,' + r.base64;
+    },
+    // Foto vieja que ya estaba en Drive: se busca por el final del nombre.
+    async buscar(id) {
+      const r = await dcallDrive('buscar_foto', { id });
+      if (!r || !r.existe) return null;
+      return 'data:' + (r.tipo || 'image/jpeg') + ';base64,' + r.base64;
+    },
+    async delete(id) { try { await dcallDrive('borrar_foto', { id }); } catch { /* ya no está */ } },
+  };
   const DRIVE_PUENTE = {
     async callTool(_servidor, tool, input) {
       const url = urlPuente();
@@ -358,7 +398,7 @@
   window.entorno = {
     async use(nombre) {
       if (nombre === 'downloads') return DESCARGAS;
-      if (nombre === 'assets') return NUBE_GOOGLE ? FOTOS : null;
+      if (nombre === 'assets') return NUBE_GOOGLE ? FOTOS : FOTOS_PUENTE;
       if (nombre === 'mcp') {
         const e = estado || await revisarEstado();
         if (!(e.luis || e.equipo)) return null;

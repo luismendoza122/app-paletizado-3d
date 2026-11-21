@@ -885,20 +885,30 @@ function dataURLtoBlob(d){
   const bin = atob(b64); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
   return new Blob([a], {type: mime});
 }
+// Peso objetivo de cada foto: se ve la etiqueta y no se llena la cuota de Drive ni la nube.
+const PESO_FOTO = 180000;
 async function compressFile(file){
   const u = URL.createObjectURL(file);
   try {
-    const r = await drawScaled(u, 1400, 0.72, true);
-    if (r.blob && r.blob.size) return r;
-    const d = await drawScaled(u, 1400, 0.72, false);         // algunos celulares no entregan toBlob
-    return {blob: dataURLtoBlob(d.data), w: d.w, h: d.h};
+    // Baja la calidad y el tamaño por pasos: la primera que quepa en el peso objetivo es la que se guarda.
+    const pasos = [{max:1280, q:0.68}, {max:1100, q:0.6}, {max:960, q:0.52}];
+    let ultimo = null;
+    for (const p of pasos) {
+      const r = await drawScaled(u, p.max, p.q, true);
+      let blob = r.blob;
+      if (!blob || !blob.size) blob = dataURLtoBlob((await drawScaled(u, p.max, p.q, false)).data);  // algunos celulares no entregan toBlob
+      ultimo = {blob, w: r.w, h: r.h};
+      if (blob && blob.size && blob.size <= PESO_FOTO) return ultimo;
+    }
+    if (ultimo && ultimo.blob && ultimo.blob.size) return ultimo;
+    throw new Error('sin imagen');
   } catch (e) {
     // segundo intento con createImageBitmap (algunas galerías de Android entregan la foto sin tipo)
     try {
       const bm = await createImageBitmap(file);
-      const sc = Math.min(1, 1400 / Math.max(bm.width, bm.height)), w = Math.max(1, Math.round(bm.width * sc)), h = Math.max(1, Math.round(bm.height * sc));
+      const sc = Math.min(1, 1280 / Math.max(bm.width, bm.height)), w = Math.max(1, Math.round(bm.width * sc)), h = Math.max(1, Math.round(bm.height * sc));
       const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(bm, 0, 0, w, h);
-      const d = c.toDataURL('image/jpeg', 0.72); return {blob: dataURLtoBlob(d), w, h};
+      const d = c.toDataURL('image/jpeg', 0.65); return {blob: dataURLtoBlob(d), w, h};
     } catch {}
     // si no se puede leer (p. ej. HEIC), se guarda tal cual si es JPG/PNG/WebP o no trae tipo
     if ((/^image\/(jpeg|png|webp)$/.test(file.type) || !file.type) && file.size && file.size < 15e6) return {blob: file.type ? file : new Blob([file], {type:'image/jpeg'}), w: 4, h: 3};
@@ -1115,7 +1125,7 @@ async function sync(){
       if (!f.blob) { try { await IDB.del('fotos', f.id); } catch {} S.pendFotos.delete(f.id); continue; }
       try {
         if (S.assets) {
-          const r = await S.assets.upload(f.blob, {type:'image/jpeg'}); remote = {r:'a', id:r.id};
+          const r = await S.assets.upload(f.blob, {type:'image/jpeg', fecha: pl.fecha}); remote = {r:'a', id:r.id};
         } else {
           const u = URL.createObjectURL(f.blob); let d;
           try { d = await drawScaled(u, 1000, 0.6, false); if (d.data.length > 240000) d = await drawScaled(u, 760, 0.5, false); } finally { URL.revokeObjectURL(u); }
@@ -2275,6 +2285,23 @@ async function xlsHistorico(rowsIn, meta){
   grupo('Por proveedor', 'proveedor', 'Proveedor', true);
   grupo('Por categoría', 'categoria', 'Categoría', true);
 
+  // ---- Por auditor: el archivo maestro queda agrupado por cada persona del equipo
+  const wa = wb.addWorksheet('Por auditor', {views:[{state:'frozen', ySplit:1}]});
+  wa.columns = [{header:'Auditor', key:'k', width:28}, {header:'Días', key:'dias', width:8}, {header:'Conferencias', key:'n', width:13}, {header:'Conformes', key:'ok', width:11}, {header:'Con novedad', key:'nov', width:12}, {header:'Sin verificar', key:'sin', width:12}, {header:'Fotos', key:'fotos', width:9}, {header:'% conformidad', key:'p', width:14}];
+  const mapaAud = new Map();
+  for (const r of rows) {
+    const k = ((r.p && r.p.auditor && r.p.auditor.nombre) || '').trim() || '(sin auditor)';
+    const o = mapaAud.get(k) || {k, n:0, ok:0, nov:0, sin:0, fotos:0, dias:new Set()};
+    o.n++; if (r.e === 'ok') o.ok++; else if (r.e === 'nov') o.nov++; else o.sin++;
+    o.fotos += (r.f.fotos || []).length;
+    if (r.fecha) o.dias.add(r.fecha);
+    mapaAud.set(k, o);
+  }
+  [...mapaAud.values()].sort((a, b) => b.n - a.n || a.k.localeCompare(b.k, 'es')).forEach(o => {
+    wa.addRow({k:o.k, dias:o.dias.size, n:o.n, ok:o.ok, nov:o.nov, sin:o.sin, fotos:o.fotos, p:(o.ok + o.nov) ? o.ok / (o.ok + o.nov) : null});
+  });
+  wa.getColumn('p').numFmt = '0%'; styleHead(wa);
+
   // ---- Dashboard
   const ult = rows.length + 1, col = kk => w1.getColumn(kk).letter, R = kk => 'Registros!$' + col(kk) + '$2:$' + col(kk) + '$' + ult;
   dash.columns = Array.from({length:12}, () => ({width:12.5}));
@@ -2829,7 +2856,7 @@ function initExport(){
 //   Semanas/Semana 2026-S46 (09-11 al 15-11) - en curso.xlsx → miniaturas + enlaces; se reemplaza con cada actualización
 //   Semanas/Semana 2026-S45 (02-11 al 08-11).xlsx → semana cerrada; se sube una vez (o si se corrige)
 //   Fotos/Semana 2026-S46/*.jpg → cada foto se sube una sola vez
-const DRIVE = {server:'Google Drive', folderId:'1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', link:'https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', titulo:'Seguimiento de Recibo - Historial completo.xlsx'};
+const DRIVE = {server:'Google Drive', folderId:'1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', link:'https://drive.google.com/drive/folders/1FXRhzXK_yKPMdR3s_E5ScwQgDdN89YL0', titulo:'Archivo maestro - Seguimiento de Recibo.xlsx'};
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', FOLDER_MIME = 'application/vnd.google-apps.folder';
 const DV = {mcp:null, listo:false, busy:false, again:false, timer:null, info:null, fotos:new Map(), msg:'', msgTipo:'', paso:'', fileArgs:null, auto: !!lsGet('rc_driveAuto', false)};
 const horaTxt = ms => { const d = new Date(ms); return fmtD(d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
@@ -2857,7 +2884,7 @@ function renderDrive(){
   else if (DV.msg) { txt = DV.msg; tipo = DV.msgTipo || 'bad'; }
   else if (!DV.listo) txt = 'Comprobando Google Drive…';
   else if (!DV.mcp) { txt = S.db ? 'Google Drive todavía no está conectado. Cuando Luis lo active, vuelve a abrir la página.' : 'Para usar Google Drive, conecta este equipo a la nube del equipo en Ajustes.'; tipo = 'bad'; }
-  else if (ult) { const pend = cambio > ult + 1000; txt = 'Última subida: ' + horaTxt(ult) + (h && h.subido ? ' · Historial completo del ' + horaTxt(h.subido) : '') + ' · ' + DV.fotos.size + ' fotos en Drive.' + (pend ? ' Hay cambios que todavía no están en Drive.' : ' Está al día.'); tipo = pend ? '' : 'ok'; }
+  else if (ult) { const pend = cambio > ult + 1000; txt = 'Última subida: ' + horaTxt(ult) + (h && h.subido ? ' · Archivo maestro del ' + horaTxt(h.subido) : '') + ' · ' + DV.fotos.size + ' fotos en Drive.' + (pend ? ' Hay cambios que todavía no están en Drive.' : ' Está al día.'); tipo = pend ? '' : 'ok'; }
   else txt = 'Todavía no se ha subido nada. Toca «Actualizar Drive ahora».';
   t.textContent = txt; t.className = 'drvTxt' + (tipo ? ' ' + tipo : '');
   $('#drvSubir').disabled = DV.busy || !DV.mcp;
@@ -2870,10 +2897,12 @@ function renderDrive(){
 }
 function driveLinks(){
   const inf = DV.info || {}, carpeta = id => 'https://drive.google.com/drive/folders/' + id;
-  const L = [{t: 'Carpeta Seguimiento de Recibo', d: 'Historial completo (Excel) y todas las subcarpetas', url: DRIVE.link}];
-  if (inf.planillasId) L.push({t: 'Planillas (formato físico)', d: 'Un PDF por planilla, con su fecha, para imprimir', url: carpeta(inf.planillasId)});
+  const L = [{t: 'Carpeta Seguimiento de Recibo', d: 'Archivo maestro (Excel) y todas las subcarpetas', url: DRIVE.link}];
+  if (inf.planillasId) L.push({t: 'Planillas (formato físico)', d: 'Una carpeta por auditor con sus planillas listas para imprimir', url: carpeta(inf.planillasId)});
   if (inf.semanasId) L.push({t: 'Semanas', d: 'Un Excel por semana', url: carpeta(inf.semanasId)});
   if (inf.fotosId) L.push({t: 'Fotos', d: 'Evidencias por semana', url: carpeta(inf.fotosId)});
+  // una entrada por auditor, para que cada uno abra solo su carpeta
+  for (const a of Object.values(inf.auditores || {})) if (a && a.id) L.push({t: a.nombre || 'Auditor', d: 'Planillas de este auditor', url: carpeta(a.id)});
   return L;
 }
 function driveProgramar(ms){
@@ -2887,6 +2916,8 @@ async function dCarpeta(nombre, parentId){
   if (!r.id) throw {code: 'tool_error', message: 'No se pudo crear la carpeta ' + nombre};
   return r.id;
 }
+// Nombre de carpeta seguro para Drive (quita los caracteres que Drive no acepta)
+function nombreCarpeta(n){ return String(n || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Sin auditor'; }
 const LIMITE_LINEA = 20000000;   // bytes del archivo; el puente de Drive recibe hasta unos 50 MB por llamada
 async function dSubirXlsx(titulo, parentId, blob, mime){
   if (blob.size > LIMITE_LINEA) throw {code: 'muy_grande'};
@@ -2911,7 +2942,7 @@ async function dLimpiar(parentId, nuevoId, coincide, conservar){   // conservar:
   } catch {}
 }
 // Sube este número cuando cambie el formato (encabezados, columnas) para rehacer en Drive los archivos ya subidos
-const FORMATO_DRIVE = 3; // 2: "Cant. Cx verificadas" pasa a Cumple/No cumple · 3: el formato trae todo el texto, calidad y notas generales
+const FORMATO_DRIVE = 4; // 2: "Cant. Cx verificadas" pasa a Cumple/No cumple · 3: el formato trae todo el texto, calidad y notas generales · 4: carpetas por auditor y archivo maestro
 async function subirDrive(manual){
   if (!DV.mcp) { renderDrive(); return; }
   if (DV.busy) { DV.again = true; return; }
@@ -2933,7 +2964,11 @@ async function subirDrive(manual){
     const pend = []; for (const r of todas) for (const fid of (r.f.fotos || [])) if (!DV.fotos.has(fid)) pend.push({r, fid});
     let i = 0;
     for (const {r, fid} of pend) {
-      i++; paso('Subiendo fotos a Drive: ' + i + ' de ' + pend.length + '…');
+      i++; paso('Enlazando fotos: ' + i + ' de ' + pend.length + '…');
+      // Si la foto ya está en Drive (la subió la app al tomarla), solo se enlaza: no se vuelve a subir.
+      const ya = r.p && r.p.fotos && r.p.fotos[fid];
+      if (ya && ya.r === 'a' && ya.id) { DV.fotos.set(fid, {id: ya.id, url: 'https://drive.google.com/file/d/' + ya.id + '/view', sem: r.sem}); continue; }
+      paso('Subiendo fotos a Drive: ' + i + ' de ' + pend.length + '…');
       let d = await fotoData(fid, r.p, 1600); if (!d) continue;          // foto que no está en este equipo ni en la nube
       if (d.data.length > 950000) d = await fotoData(fid, r.p, 1100) || d;
       if (!info.fotoSems[r.sem]) { info.fotoSems[r.sem] = await dCarpeta(semTitulo(r.sem, r.fecha), info.fotosId); await dGuardarInfo(); }
@@ -2965,17 +3000,31 @@ async function subirDrive(manual){
       await dLimpiar(info.semanasId, f.id, t => t.startsWith('Semana ' + sem + ' ') || t.startsWith('Semana ' + sem + '.'));
     }
     // 3b) planillas: el PDF del formato físico, uno por planilla con su fecha (evidencia física)
+    //     Cada auditor tiene su propia carpeta dentro de "Planillas (formato físico)".
     for (const pl of activas().slice().sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))) {
       if (!pl.filas || !pl.filas.length) continue;
       const prev = info.planillas[pl.id];
       if (!rehacer && prev && prev.fileId && (pl.actualizado || 0) <= (prev.subido || 0)) continue;
       const aud = (pl.auditor && pl.auditor.nombre || '').trim();
+      let destino = info.planillasId;
+      if (aud) {
+        info.auditores = info.auditores || {};
+        const clave = low(aud).replace(/[^a-z0-9]+/g, ' ').trim();
+        if (!info.auditores[clave] || !info.auditores[clave].id) {
+          paso('Creando la carpeta de ' + aud + '…');
+          const c = await dcall('crear_carpeta', {title: nombreCarpeta(aud), parentId: info.planillasId});
+          if (!c.id) throw {code: 'tool_error', message: 'No se pudo crear la carpeta de ' + aud};
+          info.auditores[clave] = {id: c.id, nombre: aud};
+          await dGuardarInfo();
+        }
+        destino = info.auditores[clave].id;
+      }
       const titulo = ('Planilla ' + (pl.fecha || 'sin fecha') + (aud ? ' - ' + aud : '') + ' - ' + filasDe(pl).length + ' conferencias').replace(/[\\/:*?"<>|]+/g, ' ') + '.pdf';
       paso('Subiendo ' + titulo.replace(/\.pdf$/, '') + '…');
       let blob = await pdfPlanilla(pl, true), conFotos = true;
       if (blob.size > LIMITE_LINEA) { blob = await pdfPlanilla(pl, false); conFotos = false; }
-      const f = await dSubirXlsx(titulo, info.planillasId, blob, 'application/pdf');
-      info.planillas[pl.id] = {fileId: f.id, subido: Date.now(), fecha: pl.fecha, conFotos};
+      const f = await dSubirXlsx(titulo, destino, blob, 'application/pdf');
+      info.planillas[pl.id] = {fileId: f.id, subido: Date.now(), fecha: pl.fecha, conFotos, carpeta: destino};
       await dGuardarInfo(); hechos++;
       if (prev && prev.fileId && prev.fileId !== f.id) { try { await dcall('trash_file', {fileId: prev.fileId}); } catch {} }
     }
@@ -2985,13 +3034,13 @@ async function subirDrive(manual){
     // 4) historial completo: una vez al día (al primer cambio del día) o cuando se pide a mano
     const h = info.hist;
     if (manual || rehacer || !h || !h.fileId || (h.dia !== today() && ultimoCambio() > (h.subido || 0))) {
-      paso('Subiendo el historial completo…');
+      paso('Subiendo el archivo maestro…');
       const blob = await xlsParaDrive(todas, {periodo: 'Historial completo · ' + exRango(todas), nombre: 'historial', links});
       const f = await dSubirXlsx(DRIVE.titulo, DRIVE.folderId, blob);
       info.hist = {fileId: f.id, subido: Date.now(), dia: today(), conferencias: todas.length};
       delete info.fileId; delete info.subido; delete info.url; delete info.desde; delete info.conferencias;
       await dGuardarInfo(); hechos++;
-      await dLimpiar(DRIVE.folderId, f.id, t => /Historial completo/i.test(t));
+      await dLimpiar(DRIVE.folderId, f.id, t => /Historial completo|Archivo maestro/i.test(t));
     }
     if (rehacer) { info.formato = FORMATO_DRIVE; await dGuardarInfo(); }
     if (manual) toast(hechos ? 'Drive actualizado' : 'Drive ya estaba al día');
