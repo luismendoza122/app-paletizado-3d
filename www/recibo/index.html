@@ -538,7 +538,7 @@ details>div{display:flex;flex-direction:column;gap:10px;margin-top:8px}
     <section class="card">
       <h2>Trabajo sin señal</h2>
       <div class="syncBox" id="syncBox"></div>
-      <div class="actions"><button class="btn primary" id="btnSyncNow">Sincronizar ahora</button></div>
+      <div class="actions"><button class="btn primary" id="btnSyncNow">Sincronizar ahora</button><button class="btn" id="btnSubirLocal" hidden>Subir planillas que solo están en este equipo</button></div>
       <p class="note">Todo lo que registras queda guardado en este equipo al instante. Si no hay señal, sigue trabajando con la app abierta: cuando vuelva la conexión, las planillas y fotos se suben solas. Si cierras la app sin señal, lo guardado no se pierde; se sube la próxima vez que la abras con internet.</p>
     </section>
   </section>
@@ -1076,7 +1076,11 @@ async function initCloud(){
   } catch (e) { S.cloud = 'none'; status(); }
 }
 async function onRemote(snap){
-  if (!snap.metadata.fromCache) { S.firstSnap = true; clearTimeout(S.snapTimer); if (S.err.startsWith('La nube no responde')) S.err = ''; }
+  if (!snap.metadata.fromCache) {
+    S.firstSnap = true; clearTimeout(S.snapTimer); if (S.err.startsWith('La nube no responde')) S.err = '';
+    if (!S.remotosPl) S.remotosPl = new Set();
+    for (const ch of snap.docChanges()) if (ch.type !== 'removed') S.remotosPl.add(ch.doc.id);
+  }
   let changed = false;
   for (const ch of snap.docChanges()) {
     const id = ch.doc.id;
@@ -1183,6 +1187,8 @@ async function sync(){
 }
 function usada(pl, fid){ return pl.filas.some(f => (f.fotos || []).includes(fid)); }
 function pendientes(){ let n = S.pendFotos.size + S.artDirty.size + S.artDel.size + (S.listasDirty ? 1 : 0); for (const p of S.pl.values()) if (p._dirty) n++; return n; }
+function soloLocalPl(){ if (!S.remotosPl) return []; return [...S.pl.values()].filter(p => p && !p._deleted && !S.remotosPl.has(p.id)); }
+function textoBotonLocal(n){ return n === 1 ? 'Subir 1 planilla que solo está en este equipo' : 'Subir ' + n + ' planillas que solo están en este equipo'; }
 function status(){
   const chip = $('#syncChip'), txt = $('#syncTxt'), n = pendientes();
   let s, t;
@@ -1205,6 +1211,8 @@ function status(){
     
     box.innerHTML = lines.join('');
   }
+  const btnLocal = $('#btnSubirLocal'), nSolo = soloLocalPl().length;
+  if (btnLocal) { btnLocal.hidden = !(S.cloud === 'on' && nSolo); if (!btnLocal.dataset.seguro) btnLocal.textContent = textoBotonLocal(nSolo); }
 }
 
 // ---------- vistas ----------
@@ -2646,6 +2654,22 @@ function bind(){
   ['#cfTitulo', '#cfSede', '#cfPrefijo', '#cfFilas', '#cfElaboro'].forEach(id => $(id).addEventListener('input', saveCfg));
   ['#cfAudNom', '#cfAudSap'].forEach(id => $(id).addEventListener('input', () => { S.aud = {nombre: $('#cfAudNom').value.trim(), sap: $('#cfAudSap').value.trim()}; lsSet('rc_aud', S.aud); }));
   $('#btnSyncNow').addEventListener('click', () => { S.err = ''; sync(); });
+  $('#btnSubirLocal').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget; const lista = soloLocalPl();
+    if (!lista.length) { status(); return; }
+    if (b.dataset.seguro !== '1') {
+      b.dataset.seguro = '1';
+      b.textContent = '¿Subir ' + lista.length + '? ' + lista.map(p => fmtD(p.fecha) + ' · ' + ((p.auditor && p.auditor.nombre) || 'sin auditor')).join(' | ');
+      setTimeout(() => { if (b.isConnected) { b.dataset.seguro = ''; status(); } }, 8000);
+      return;
+    }
+    b.dataset.seguro = ''; b.disabled = true; b.textContent = 'Subiendo…';
+    for (const p of lista) { p._dirty = true; p.actualizado = Date.now(); try { await IDB.put('planillas', p); } catch {} }
+    await sync();
+    b.disabled = false;
+    if (soloLocalPl().length) { b.textContent = 'Quedaron ' + soloLocalPl().length + ' sin subir. Revisa la conexión.'; setTimeout(status, 6000); }
+    else status();
+  });
   window.addEventListener('online', () => { status(); scheduleSync(500); });
   window.addEventListener('offline', status);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') scheduleSync(800); });
