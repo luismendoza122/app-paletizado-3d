@@ -118,6 +118,20 @@ test('fila de la hoja → artículo, y simulación de un pedido', () => {
   assert.equal(s.faltantes.length, 1);
 });
 
+test('simulación: la tarea puede pedir 1 o 2 estibas a la vez', () => {
+  const { articulo } = articuloDesdeFila({ ARTICULO: 'Caja 400x300', CODIGO_ARTICULO: '1001', LARGO_A_MM: 400, ANCHO_B_MM: 300, ALTO_H_MM: 250, PESO_KG: 8, EMPAQUE: 'CAJA', LIQUIDO: 'NO', DELICADO: 'NO', SECCION: 'Seco alimentos' });
+  const mapa = new Map([['1001', { fila: { CODIGO: '12-001x1', SECCION: 'Seco alimentos', SECUENCIA_RUTA: 1 }, art: articulo, ia: 0.8 }]]);
+  const lineas = [{ CODIGO_ARTICULO: '1001', CAJAS: 30 }];
+  const dos = simularPedido(lineas, mapa, PALET, {}, { estibas: 2 });
+  assert.equal(dos.resumen.estibas, 2);
+  assert.equal(dos.grupos[0].estibas.length, 2);
+  assert.ok(dos.grupos[0].estibas.every((e) => e.totalCajas > 0));
+  assert.equal(dos.resumen.cajas, 30);
+  const una = simularPedido(lineas, mapa, PALET, {}, { estibas: 1 });
+  assert.equal(una.resumen.estibas, 1);
+  assert.equal(una.resumen.cajas, 30);
+});
+
 test('agente: responde preguntas del proyecto con su biblioteca', async () => {
   const { responder } = await import('../www/js/agente.js');
   const { generarLayout } = await import('../www/js/datos/layout.js');

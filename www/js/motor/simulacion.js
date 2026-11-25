@@ -12,7 +12,9 @@ export function grupoDeZona(zona) {
 }
 
 // mapaUbicaciones: Map codigoArticulo → { fila, art, ia } (dónde está el artículo en el escenario)
-export function simularPedido(lineas, mapaUbicaciones, palet, reglas = {}) {
+// opciones.estibas: 1 o 2 fuerza cuántas estibas se arman a la vez (si no, manda la columna ESTIBAS_TAREA).
+export function simularPedido(lineas, mapaUbicaciones, palet, reglas = {}, opciones = {}) {
+  const forzadas = [1, 2].includes(Number(opciones.estibas)) ? Number(opciones.estibas) : null;
   const faltantes = [];
   const grupos = new Map();
   for (const l of lineas) {
@@ -22,7 +24,7 @@ export function simularPedido(lineas, mapaUbicaciones, palet, reglas = {}) {
     const g = grupoDeZona(u.fila.SECCION);
     if (!grupos.has(g)) grupos.set(g, { cajas: [], estibas: 1 });
     const grupo = grupos.get(g);
-    grupo.estibas = Math.max(grupo.estibas, Number(l.ESTIBAS_TAREA) === 2 ? 2 : 1);
+    grupo.estibas = forzadas || Math.max(grupo.estibas, Number(l.ESTIBAS_TAREA) === 2 ? 2 : 1);
     for (let i = 0; i < cajas; i++) {
       grupo.cajas.push({ art: u.art, ubicacion: u.fila.CODIGO, secuencia: Number(u.fila.SECUENCIA_RUTA) || 0, ia: u.ia });
     }

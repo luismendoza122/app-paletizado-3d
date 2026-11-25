@@ -8,15 +8,19 @@ export function colorDe(codigo, mapa) {
 
 let THREE = null;
 let Orbit = null;
-let intentado = false;
-async function cargarThree() {
-  if (intentado) return !!THREE;
-  intentado = true;
-  try {
-    THREE = await import('three');
-    ({ OrbitControls: Orbit } = await import('three/addons/controls/OrbitControls.js'));
-  } catch { THREE = null; }
-  return !!THREE;
+let carga = null;
+// Una sola promesa de carga: si dos vistas piden Three.js a la vez, las dos esperan la misma.
+function cargarThree() {
+  if (!carga) {
+    carga = (async () => {
+      try {
+        THREE = await import('three');
+        ({ OrbitControls: Orbit } = await import('three/addons/controls/OrbitControls.js'));
+      } catch { THREE = null; }
+      return !!THREE;
+    })();
+  }
+  return carga;
 }
 
 let actual = null; // { renderer, controls, frame }
@@ -31,22 +35,36 @@ function limpiar() {
 
 // estiba: { cajas:[{x,y,z,dx,dy,dz,codigo,orden}] }, palet: { largo, ancho, altoBase }
 export async function dibujar3D(contenedor, estiba, palet, colores, hastaOrden = Infinity) {
+  if (!(await prepararContenedor(contenedor))) return false;
+  const { escena, centro } = armarEscena(estiba, palet, colores, hastaOrden);
+  return montarVista(contenedor, escena, centro, 2.6);
+}
+
+// Varias estibas a la vez, una al lado de la otra: el pedido completo de un vistazo.
+export async function dibujar3DConjunto(contenedor, estibas, palet, colores) {
+  if (!(await prepararContenedor(contenedor))) return false;
+  const { escena, centro, anchoTotal } = armarEscenaConjunto(estibas, palet, colores);
+  return montarVista(contenedor, escena, centro, Math.max(2.6, anchoTotal * 1.4));
+}
+
+// Deja el contenedor listo y carga Three.js antes de armar la escena (armarEscena usa THREE).
+async function prepararContenedor(contenedor) {
   limpiar();
   contenedor.innerHTML = '';
-  const ok = await cargarThree();
-  if (!ok) {
-    contenedor.innerHTML = '<p class="nota">Vista 3D no disponible en este equipo. Abajo está la vista por capas.</p>';
-    return false;
-  }
+  if (await cargarThree()) return true;
+  contenedor.innerHTML = '<p class="nota">Vista 3D no disponible en este equipo. Abajo está la vista por capas.</p>';
+  return false;
+}
+
+function montarVista(contenedor, escena, centro, distancia) {
   const ancho = contenedor.clientWidth || 340;
   const alto = Math.max(260, Math.min(420, ancho * 0.9));
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(ancho, alto);
   contenedor.appendChild(renderer.domElement);
-  const { escena, centro } = armarEscena(estiba, palet, colores, hastaOrden);
-  const camara = new THREE.PerspectiveCamera(40, ancho / alto, 0.01, 50);
-  camara.position.set(centro.x + 2.2, 2.0, centro.z + 2.4);
+  const camara = new THREE.PerspectiveCamera(40, ancho / alto, 0.01, 100);
+  camara.position.set(centro.x + distancia * 0.85, Math.max(2.0, distancia * 0.55), centro.z + distancia * 0.92);
   const controls = Orbit ? new Orbit(camara, renderer.domElement) : null;
   if (controls) { controls.target.copy(centro); controls.update(); }
   else camara.lookAt(centro);
@@ -56,26 +74,28 @@ export async function dibujar3D(contenedor, estiba, palet, colores, hastaOrden =
   return true;
 }
 
-// Escena 3D de una estiba: madera + cajas. Devuelve las mallas en orden de armado (para el video).
-function armarEscena(estiba, palet, colores, hastaOrden = Infinity) {
-  const S = 0.001;
+function prepararEscena() {
   const escena = new THREE.Scene();
   escena.background = new THREE.Color('#f4f6f8');
-  const centro = new THREE.Vector3((palet.largo / 2) * S, 0.6, (palet.ancho / 2) * S);
   escena.add(new THREE.HemisphereLight('#ffffff', '#8899aa', 2.2));
   const luz = new THREE.DirectionalLight('#ffffff', 1.4);
   luz.position.set(3, 5, 2);
   escena.add(luz);
+  return escena;
+}
 
-  // Estiba de madera (tablas superiores y tacos)
-  const madera = new THREE.MeshStandardMaterial({ color: '#b98a55' });
+// Estiba de madera (tablas y tacos) + cajas, desplazada desfaseX metros. Devuelve las piezas en orden de armado.
+function agregarEstiba(escena, estiba, palet, colores, hastaOrden, desfaseX = 0) {
+  const S = 0.001;
+  const centroZ = (palet.ancho / 2) * S;
   const hb = palet.altoBase * S;
+  const madera = new THREE.MeshStandardMaterial({ color: '#b98a55' });
   const tabla = new THREE.Mesh(new THREE.BoxGeometry(palet.largo * S, hb * 0.25, palet.ancho * S), madera);
-  tabla.position.set(centro.x, hb * 0.875, centro.z);
+  tabla.position.set(desfaseX + (palet.largo / 2) * S, hb * 0.875, centroZ);
   escena.add(tabla);
   for (const fx of [0.08, 0.5, 0.92]) for (const fz of [0.08, 0.5, 0.92]) {
     const taco = new THREE.Mesh(new THREE.BoxGeometry(0.12, hb * 0.75, 0.12), madera);
-    taco.position.set(palet.largo * S * fx, hb * 0.375, palet.ancho * S * fz);
+    taco.position.set(desfaseX + palet.largo * S * fx, hb * 0.375, palet.ancho * S * fz);
     escena.add(taco);
   }
 
@@ -88,14 +108,37 @@ function armarEscena(estiba, palet, colores, hastaOrden = Infinity) {
     const mat = new THREE.MeshStandardMaterial({ color: c.sobrecargada ? '#d62828' : colorDe(c.codigo, colores) });
     const m = new THREE.Mesh(geo, mat);
     m.scale.set(c.dx * S * 0.99, c.dz * S * 0.99, c.dy * S * 0.99);
-    m.position.set((c.x + c.dx / 2) * S, hb + (c.z + c.dz / 2) * S, (c.y + c.dy / 2) * S);
+    m.position.set(desfaseX + (c.x + c.dx / 2) * S, hb + (c.z + c.dz / 2) * S, (c.y + c.dy / 2) * S);
     escena.add(m);
     const b = new THREE.LineSegments(bordes, lineaMat);
     b.scale.copy(m.scale); b.position.copy(m.position);
     escena.add(b);
     piezas.push({ caja: c, malla: m, borde: b, y: m.position.y });
   }
+  return piezas;
+}
+
+// Escena 3D de una estiba. Devuelve las mallas en orden de armado (para el video).
+function armarEscena(estiba, palet, colores, hastaOrden = Infinity) {
+  const S = 0.001;
+  const escena = prepararEscena();
+  const piezas = agregarEstiba(escena, estiba, palet, colores, hastaOrden, 0);
+  const centro = new THREE.Vector3((palet.largo / 2) * S, 0.6, (palet.ancho / 2) * S);
   return { escena, centro, piezas };
+}
+
+// Escena con varias estibas lado a lado (hueco de 30 cm entre una y otra).
+function armarEscenaConjunto(estibas, palet, colores) {
+  const S = 0.001;
+  const hueco = 0.3;
+  const paso = palet.largo * S + hueco;
+  const n = Math.max(1, estibas.length);
+  const escena = prepararEscena();
+  const piezas = [];
+  estibas.forEach((e, i) => piezas.push(...agregarEstiba(escena, e, palet, colores, Infinity, i * paso)));
+  const anchoTotal = n * palet.largo * S + (n - 1) * hueco;
+  const centro = new THREE.Vector3(anchoTotal / 2, 0.6, (palet.ancho / 2) * S);
+  return { escena, centro, piezas, anchoTotal };
 }
 
 // Formatos de video que acepta el equipo (MP4 primero: WhatsApp lo abre sin problema).

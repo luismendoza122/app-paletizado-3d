@@ -8,7 +8,7 @@ import { simularPedido } from './motor/simulacion.js';
 import { leerListaPedido, lineasDesdeFilas, unirLineas, totalesPedido, armarPedido, listaDeCarga, pedidoParaThemendo, buscarArticulo } from './motor/pedido.js';
 import { leerArchivo, aCSV, leerCSV } from './datos/importar.js';
 import { guardar, leer, borrarTodo } from './datos/almacen.js';
-import { dibujar3D, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
+import { dibujar3D, dibujar3DConjunto, dibujarCapa, nivelesDe, colorDe, grabarVideo, formatoVideo } from './visor.js';
 import { BIBLIOTECA } from './biblioteca.js';
 import { hojasExcel, libroExcel, textoDiagnostico, guardarArchivo, nombreArchivo, aBase64 } from './exportar.js';
 import { generarLayout, mezclar, estadoDe, agregarPosiciones, posicionesDisponibles, borrarPosicion, esAgregada, cuenta, POSICIONES_BASE, catalogo, revisarDatos, COLUMNAS, ZONAS, aMilimetros, desdeMilimetros } from './datos/layout.js';
@@ -34,6 +34,8 @@ const estado = {
   pedidoCalc: leer('pedidoCalc', []),     // pedido de la pestaña Calcular palet: [{ codigo, cajas }]
   pedidoOpc: leer('pedidoOpc', { orden: 'peso', separar: true }),
   pedidoArmado: null,  // resultado de armarPedido
+  estibasForzadas: leer('estibasForzadas', 0),  // 0 = automático; 1 o 2 = cuántas estibas armar a la vez
+  verEstibasJuntas: leer('verEstibasJuntas', false), // mostrar todas las estibas del pedido en un solo 3D
   posiciones: [],      // posiciones ocupadas con artículo e índice
   colores: new Map(),
   tarea: leer('tarea', null),            // tarea abierta por enlace (modo operador)
@@ -102,7 +104,7 @@ function contexto() {
 }
 
 // ---------- Información compartida (una sola para todos) ----------
-const VERSION_APP = '0.8.4';
+const VERSION_APP = '0.9.0';
 function miNombre() { return estado.tarea?.asignado_a || (estado.esPropietario ? 'Administración' : estado.conSesion ? (adminGuardado()?.nombre || 'Administrador') : 'Este celular'); }
 function datosDe(f) { return Object.fromEntries(Object.entries(f).filter(([k]) => !k.startsWith('_'))); }
 function pendientes() { return estado.filas.filter((f) => f._pendiente); }
@@ -846,9 +848,10 @@ async function mostrarEstiba(cont, estiba, titulo = '') {
 
 function simular(pedido) {
   const lineas = estado.pedidos.filter((l) => String(l.PEDIDO).trim() === pedido);
-  const actual = simularPedido(lineas, mapaActual(), estado.palet, estado.reglas);
+  const opciones = estado.estibasForzadas ? { estibas: estado.estibasForzadas } : {};
+  const actual = simularPedido(lineas, mapaActual(), estado.palet, estado.reglas, opciones);
   const mp = mapaPropuesto();
-  const propuesta = mp ? simularPedido(lineas, mp, estado.palet, estado.reglas) : null;
+  const propuesta = mp ? simularPedido(lineas, mp, estado.palet, estado.reglas, opciones) : null;
   return { actual, propuesta };
 }
 
@@ -858,12 +861,17 @@ async function mostrarPedido(pedido) {
   const { actual, propuesta } = simular(pedido);
   const esc2 = propuesta || actual;
   const estibas = esc2.grupos.flatMap((g) => g.estibas.map((e) => ({ ...e, zona: g.zona })));
+  const opcion = (v, texto) => `<option value="${v}"${estado.estibasForzadas === v ? ' selected' : ''}>${texto}</option>`;
   cont.innerHTML = `
     ${actual.faltantes.length ? `<div class="aviso">Artículos del pedido sin datos completos en UBICACIONES (no se armaron): ${actual.faltantes.map(esc).join(', ')}</div>` : ''}
     ${tablaComparacion(actual.resumen, propuesta?.resumen)}
     <div class="fila">
       <label>Ver<select id="verEsc"><option value="actual">Ubicación actual</option>${propuesta ? '<option value="propuesta" selected>Propuesta</option>' : ''}</select></label>
       <label>Estiba<select id="verEst">${estibas.map((e, i) => `<option value="${i}">${esc(e.zona)} · estiba ${e.numero} · ${e.totalCajas} cajas</option>`).join('')}</select></label>
+    </div>
+    <div class="fila">
+      <label>Estibas de la tarea<select id="verNumEst"><option value="0"${estado.estibasForzadas ? '' : ' selected'}>Automático (según el pedido)</option>${opcion(1, '1 estiba a la vez')}${opcion(2, '2 estibas a la vez')}</select></label>
+      <label><input type="checkbox" id="verJuntas"${estado.verEstibasJuntas ? ' checked' : ''}> Ver todas las estibas juntas en 3D</label>
     </div>
     <div id="vistaEstiba"></div>`;
   const pintar = async () => {
@@ -872,12 +880,40 @@ async function mostrarPedido(pedido) {
     const sel = $('#verEst');
     const idx = Math.min(Number(sel.value) || 0, lista.length - 1);
     sel.innerHTML = lista.map((e, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>${esc(e.zona)} · estiba ${e.numero} · ${e.totalCajas} cajas</option>`).join('');
-    if (lista[idx]) await mostrarEstiba($('#vistaEstiba'), lista[idx], `Pedido ${pedido} · ${lista[idx].zona} · estiba ${lista[idx].numero}`);
+    const juntas = $('#verJuntas').checked && lista.length > 1;
+    sel.disabled = juntas;
+    if (juntas) await mostrarEstibasJuntas($('#vistaEstiba'), lista, `Pedido ${pedido}`);
+    else if (lista[idx]) await mostrarEstiba($('#vistaEstiba'), lista[idx], `Pedido ${pedido} · ${lista[idx].zona} · estiba ${lista[idx].numero}`);
     else $('#vistaEstiba').innerHTML = '';
   };
   $('#verEsc').addEventListener('change', pintar);
   $('#verEst').addEventListener('change', pintar);
+  $('#verJuntas').addEventListener('change', () => {
+    estado.verEstibasJuntas = $('#verJuntas').checked;
+    guardar('verEstibasJuntas', estado.verEstibasJuntas);
+    pintar();
+  });
+  $('#verNumEst').addEventListener('change', (e) => {
+    estado.estibasForzadas = Number(e.target.value) || 0;
+    guardar('estibasForzadas', estado.estibasForzadas);
+    mostrarPedido(pedido);
+  });
   await pintar();
+}
+
+// Todas las estibas del pedido en un solo 3D, de izquierda a derecha en el orden de la lista.
+async function mostrarEstibasJuntas(cont, lista, titulo) {
+  const totalCajas = lista.reduce((s, e) => s + e.totalCajas, 0);
+  const peso = lista.reduce((s, e) => s + e.pesoTotal, 0);
+  cont.innerHTML = `
+    <p class="nota"><b>${esc(titulo)}</b> · ${lista.length} estibas juntas · ${fmt(totalCajas)} cajas · ${fmt(peso, 1)} kg<br>
+      ${lista.map((e, i) => `Estiba ${i + 1} (${esc(e.zona)}): ${e.totalCajas} cajas · ${fmt(e.alturaTotal)} mm`).join(' · ')}</p>
+    <div class="visor" id="visor3dJuntas"></div>
+    <div class="leyenda" id="leyendaJuntas"></div>`;
+  await dibujar3DConjunto($('#visor3dJuntas', cont), lista, estado.palet, estado.colores);
+  const vistos = new Map();
+  lista.forEach((e) => e.cajas.forEach((c) => { if (!vistos.has(c.codigo)) vistos.set(c.codigo, c.nombre); }));
+  $('#leyendaJuntas', cont).innerHTML = [...vistos].map(([cod, nom]) => `<span><i style="background:${colorDe(cod, estado.colores)}"></i>${esc(nom)}</span>`).join('') + '<span><i style="background:#d62828"></i>Con sobrepeso</span>';
 }
 
 function simularTodos() {

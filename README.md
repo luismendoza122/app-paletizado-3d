@@ -9,7 +9,7 @@ App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la r
 - **APK de Android:** se compila sola en GitHub cada vez que se sube un cambio a `main`.
   Descarga: `https://github.com/luismendoza122/app-paletizado-3d/releases/latest/download/paletizado-3d.apk`
 
-## Qué hace (versión 0.2)
+## Qué hace (versión 0.9)
 | Pantalla | Para qué |
 |---|---|
 | Inicio | Avance por zona, cargar la hoja "Ubicaciones CEDI" o pedidos (.xlsx / CSV), descargar la APK |
@@ -17,11 +17,13 @@ App para **ubicar cada producto en el pasillo correcto** y que, al recorrer la r
 | Agente | Diagnóstico, siguiente paso, mejoras por pasillo, movimientos prioritarios y preguntas (sin internet) |
 | Ubicaciones | Cada posición con su artículo, clase BASE / MEDIO / TOPE y datos que faltan |
 | Reubicar | Propone el nuevo orden dentro de cada pasillo (BASE → MEDIO → TOPE), sin cambiar de zona. Exporta el plan de movimientos |
-| Pedidos | Arma cada pedido real en el orden de la ruta (1 o 2 estibas) con la ubicación actual y con la propuesta, y compara |
+| Pedidos | Arma cada pedido real en el orden de la ruta con la ubicación actual y con la propuesta, y compara. Elige **1 o 2 estibas a la vez** (o automático según la columna `ESTIBAS_TAREA`) y marca **Ver todas las estibas juntas en 3D** para ver el pedido completo |
 | Calcular palet | Palet de un solo artículo: cajas por capa × capas, altura, peso y vista 3D |
 | Ajustes | Medidas del palet y reglas del CEDI (altura y peso máximos) |
 
 Datos por posición: artículo, código, largo A × ancho B × alto H (mm), peso (kg), caja o bulto, líquido, delicado. **Las posiciones vacías no cuentan.**
+
+En la hoja `PEDIDOS`, la columna **`ESTIBAS_TAREA`** dice si la tarea se arma con 1 o 2 estibas a la vez. Si no viene, la app usa 1 y abre otra estiba solo cuando la primera se llena; en la pestaña Pedidos también puedes forzarlo sin tocar el Excel.
 
 ## Probar en tu PC (Windows, PowerShell)
 ```powershell
